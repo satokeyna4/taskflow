@@ -3916,6 +3916,15 @@ self.addEventListener('fetch', e => {
 
   let ttNowTimer = null;
 
+  function renderReflection() {
+    const p = state.planner;
+    document.getElementById('reflection-date').textContent = state.ttDate.replace(/-/g,'/');
+    const ref = (p.reflections || {})[state.ttDate] || {};
+    document.getElementById('reflect-good').value = ref.good || '';
+    document.getElementById('reflect-improve').value = ref.improve || '';
+    document.getElementById('reflect-gratitude').value = ref.gratitude || '';
+  }
+
   function ttMove(delta) {
     const d = new Date(state.ttDate + 'T00:00:00');
     d.setDate(d.getDate() + delta);
@@ -3923,6 +3932,7 @@ self.addEventListener('fetch', e => {
     renderTimetable();
     renderDailyTodos();
     renderReminderList();
+    renderReflection();
   }
 
   function ttGoToday() {
@@ -3930,6 +3940,7 @@ self.addEventListener('fetch', e => {
     renderTimetable();
     renderDailyTodos();
     renderReminderList();
+    renderReflection();
   }
 
   function ttJumpToDate(dateStr) {
@@ -3938,6 +3949,7 @@ self.addEventListener('fetch', e => {
     renderTimetable();
     renderDailyTodos();
     renderReminderList();
+    renderReflection();
   }
 
   function renderTimetable() {
