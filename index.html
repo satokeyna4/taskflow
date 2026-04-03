@@ -1419,6 +1419,47 @@
     }
     .tt-nav-btn:hover { background: var(--primary-light); color: var(--primary); border-color: var(--primary); }
 
+    /* ミニカレンダー */
+    .mini-cal-popup {
+      display: none; position: absolute; top: calc(100% + 6px); left: 50%;
+      transform: translateX(-50%); z-index: 999;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.13);
+      padding: 10px; width: 224px; user-select: none;
+    }
+    .mini-cal-popup.open { display: block; }
+    .mini-cal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .mini-cal-title { font-size: 13px; font-weight: 600; color: var(--text); }
+    .mini-cal-nav {
+      background: none; border: none; cursor: pointer; color: var(--text-muted);
+      font-size: 16px; padding: 2px 6px; border-radius: 4px; line-height: 1;
+    }
+    .mini-cal-nav:hover { background: var(--bg); color: var(--primary); }
+    .mini-cal-grid {
+      display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;
+    }
+    .mini-cal-dow {
+      text-align: center; font-size: 10px; font-weight: 600;
+      color: var(--text-muted); padding: 2px 0;
+    }
+    .mini-cal-dow:nth-child(7n+6) { color: #3b82f6; }
+    .mini-cal-dow:nth-child(7n)   { color: #ef4444; }
+    .mini-cal-day {
+      text-align: center; font-size: 12px; padding: 4px 2px;
+      border-radius: 6px; cursor: pointer; color: var(--text);
+      transition: background 0.1s;
+    }
+    .mini-cal-day:hover { background: var(--primary-light); color: var(--primary); }
+    .mini-cal-day.other-month { color: var(--border); }
+    .mini-cal-day.is-today { font-weight: 700; color: var(--primary); }
+    .mini-cal-day.selected { background: var(--primary); color: white !important; }
+    .mini-cal-day.is-sat { color: #3b82f6; }
+    .mini-cal-day.is-sun { color: #ef4444; }
+    .mini-cal-day.selected { background: var(--primary); color: white !important; }
+
     .timetable-scroll {
       overflow-y: auto;
       max-height: calc(100vh - 260px);
@@ -2278,10 +2319,15 @@
               <div style="display:flex;align-items:center;gap:6px">
                 <button class="tt-nav-btn" onclick="ttMove(-1)">‹</button>
                 <div style="position:relative">
-                  <div class="timetable-date" id="tt-date-label" onclick="document.getElementById('tt-date-picker').showPicker?document.getElementById('tt-date-picker').showPicker():document.getElementById('tt-date-picker').click()" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px" title="日付を選んでジャンプ"></div>
-                  <input type="date" id="tt-date-picker"
-                    onchange="ttJumpToDate(this.value)"
-                    style="position:absolute;opacity:0;pointer-events:none;top:0;left:0;width:100%;height:100%">
+                  <div class="timetable-date" id="tt-date-label" onclick="toggleMiniCal()" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px" title="日付を選んでジャンプ"></div>
+                  <div class="mini-cal-popup" id="mini-cal-popup">
+                    <div class="mini-cal-header">
+                      <button class="mini-cal-nav" onclick="miniCalMove(-1)">‹</button>
+                      <span class="mini-cal-title" id="mini-cal-title"></span>
+                      <button class="mini-cal-nav" onclick="miniCalMove(1)">›</button>
+                    </div>
+                    <div class="mini-cal-grid" id="mini-cal-grid"></div>
+                  </div>
                 </div>
                 <button class="tt-nav-btn" onclick="ttMove(1)">›</button>
               </div>
@@ -3573,8 +3619,9 @@ self.addEventListener('fetch', e => {
     return `${mon.getMonth()+1}/${mon.getDate()}〜${sun.getMonth()+1}/${sun.getDate()}`;
   }
 
-  function getMonthKey() {
-    const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  function getMonthKey(dateStr) {
+    const d = dateStr ? new Date(dateStr + 'T00:00:00') : new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
   }
   function getWeekKey(dateStr) {
     const d = new Date((dateStr||today()) + 'T00:00:00');
@@ -3592,9 +3639,9 @@ self.addEventListener('fetch', e => {
     // goal period label
     const t = state.currentGoalTab;
     const labels = {
-      monthly: `📅 ${getMonthKey().replace('-','年')}月`,
-      weekly:  `📆 ${getWeekLabel(today())} の週`,
-      daily:   `🌅 ${today().replace(/-/g,'/')} (今日)`,
+      monthly: `📅 ${getMonthKey(state.ttDate).replace('-','年')}月`,
+      weekly:  `📆 ${getWeekLabel(state.ttDate)} の週`,
+      daily:   `🌅 ${state.ttDate.replace(/-/g,'/')}`,
     };
     document.getElementById('goal-period-label').textContent = labels[t];
 
@@ -3640,18 +3687,18 @@ self.addEventListener('fetch', e => {
     document.querySelectorAll('.goal-tab').forEach(t => t.classList.remove('active'));
     el.classList.add('active');
     const labels = {
-      monthly: `📅 ${getMonthKey().replace('-','年')}月`,
-      weekly:  `📆 ${getWeekLabel(today())} の週`,
-      daily:   `🌅 ${today().replace(/-/g,'/')} (今日)`,
+      monthly: `📅 ${getMonthKey(state.ttDate).replace('-','年')}月`,
+      weekly:  `📆 ${getWeekLabel(state.ttDate)} の週`,
+      daily:   `🌅 ${state.ttDate.replace(/-/g,'/')}`,
     };
     document.getElementById('goal-period-label').textContent = labels[tab];
     renderGoalList();
   }
 
   function getGoalKey() {
-    if (state.currentGoalTab === 'monthly') return getMonthKey();
-    if (state.currentGoalTab === 'weekly') return getWeekKey(today());
-    return today();
+    if (state.currentGoalTab === 'monthly') return getMonthKey(state.ttDate);
+    if (state.currentGoalTab === 'weekly') return getWeekKey(state.ttDate);
+    return state.ttDate;
   }
 
   function getGoals() {
@@ -3923,6 +3970,14 @@ self.addEventListener('fetch', e => {
     document.getElementById('reflect-good').value = ref.good || '';
     document.getElementById('reflect-improve').value = ref.improve || '';
     document.getElementById('reflect-gratitude').value = ref.gratitude || '';
+    // 目標を日付連動で再描画（全タブ対象）
+    const goalLabels = {
+      monthly: `📅 ${getMonthKey(state.ttDate).replace('-','年')}月`,
+      weekly:  `📆 ${getWeekLabel(state.ttDate)} の週`,
+      daily:   `🌅 ${state.ttDate.replace(/-/g,'/')}`,
+    };
+    document.getElementById('goal-period-label').textContent = goalLabels[state.currentGoalTab];
+    renderGoalList();
   }
 
   function ttMove(delta) {
@@ -3951,6 +4006,89 @@ self.addEventListener('fetch', e => {
     renderReminderList();
     renderReflection();
   }
+
+  // ===== ミニカレンダー =====
+  let _miniCalYear = 0, _miniCalMonth = 0;
+
+  function toggleMiniCal() {
+    const popup = document.getElementById('mini-cal-popup');
+    if (popup.classList.contains('open')) {
+      popup.classList.remove('open');
+    } else {
+      const d = new Date(state.ttDate + 'T00:00:00');
+      _miniCalYear = d.getFullYear();
+      _miniCalMonth = d.getMonth();
+      renderMiniCal();
+      popup.classList.add('open');
+    }
+  }
+
+  function closeMiniCal() {
+    document.getElementById('mini-cal-popup').classList.remove('open');
+  }
+
+  function miniCalMove(delta) {
+    _miniCalMonth += delta;
+    if (_miniCalMonth < 0)  { _miniCalMonth = 11; _miniCalYear--; }
+    if (_miniCalMonth > 11) { _miniCalMonth = 0;  _miniCalYear++; }
+    renderMiniCal();
+  }
+
+  function renderMiniCal() {
+    const title = document.getElementById('mini-cal-title');
+    title.textContent = `${_miniCalYear}年${_miniCalMonth + 1}月`;
+
+    const todayStr = today();
+    const selectedStr = state.ttDate;
+    const dows = ['月','火','水','木','金','土','日'];
+
+    // 月初の曜日（月曜始まり）
+    const firstDay = new Date(_miniCalYear, _miniCalMonth, 1);
+    const startDow = (firstDay.getDay() + 6) % 7; // 0=月
+    const daysInMonth = new Date(_miniCalYear, _miniCalMonth + 1, 0).getDate();
+    const daysInPrev  = new Date(_miniCalYear, _miniCalMonth, 0).getDate();
+
+    let html = dows.map((d, i) => `<div class="mini-cal-dow">${d}</div>`).join('');
+
+    // 前月の端数
+    for (let i = 0; i < startDow; i++) {
+      const day = daysInPrev - startDow + 1 + i;
+      html += `<div class="mini-cal-day other-month">${day}</div>`;
+    }
+    // 当月
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dow = (startDow + d - 1) % 7; // 0=月
+      const dateStr = `${_miniCalYear}-${String(_miniCalMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      let cls = 'mini-cal-day';
+      if (dow === 5) cls += ' is-sat';
+      if (dow === 6) cls += ' is-sun';
+      if (dateStr === todayStr) cls += ' is-today';
+      if (dateStr === selectedStr) cls += ' selected';
+      html += `<div class="${cls}" onclick="miniCalPickDate('${dateStr}')">${d}</div>`;
+    }
+    // 翌月の端数（6行になるよう埋める）
+    const total = startDow + daysInMonth;
+    const remain = total % 7 === 0 ? 0 : 7 - (total % 7);
+    for (let d = 1; d <= remain; d++) {
+      html += `<div class="mini-cal-day other-month">${d}</div>`;
+    }
+
+    document.getElementById('mini-cal-grid').innerHTML = html;
+  }
+
+  function miniCalPickDate(dateStr) {
+    closeMiniCal();
+    ttJumpToDate(dateStr);
+  }
+
+  // カレンダー外クリックで閉じる
+  document.addEventListener('click', function(e) {
+    const popup = document.getElementById('mini-cal-popup');
+    if (!popup) return;
+    if (!popup.contains(e.target) && !document.getElementById('tt-date-label').contains(e.target)) {
+      closeMiniCal();
+    }
+  });
 
   function renderTimetable() {
     const ROW_H = 64; // px per hour
