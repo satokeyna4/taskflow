@@ -3608,8 +3608,8 @@ self.addEventListener('fetch', e => {
     renderReminderList();
 
     // reflection
-    document.getElementById('reflection-date').textContent = today().replace(/-/g,'/');
-    const ref = (p.reflections || {})[today()] || {};
+    document.getElementById('reflection-date').textContent = state.ttDate.replace(/-/g,'/');
+    const ref = (p.reflections || {})[state.ttDate] || {};
     document.getElementById('reflect-good').value = ref.good || '';
     document.getElementById('reflect-improve').value = ref.improve || '';
     document.getElementById('reflect-gratitude').value = ref.gratitude || '';
@@ -3625,7 +3625,7 @@ self.addEventListener('fetch', e => {
 
   function saveReflection() {
     if (!state.planner.reflections) state.planner.reflections = {};
-    state.planner.reflections[today()] = {
+    state.planner.reflections[state.ttDate] = {
       good: document.getElementById('reflect-good').value,
       improve: document.getElementById('reflect-improve').value,
       gratitude: document.getElementById('reflect-gratitude').value,
