@@ -2084,6 +2084,9 @@
       .view-btn { padding: 6px 10px; font-size: 12px; }
     }
   </style>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -2109,6 +2112,10 @@
     <div class="network-badge online" id="network-badge">
       <span class="network-dot"></span>
       <span id="network-label">オンライン</span>
+    </div>
+    <div id="sync-badge" title="同期状態" style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-muted);padding:4px 8px;border-radius:20px;background:var(--surface2);border:1px solid var(--border)">
+      <span id="sync-dot" style="width:7px;height:7px;border-radius:50%;background:#94a3b8;flex-shrink:0"></span>
+      <span id="sync-label">同期中…</span>
     </div>
     <button class="icon-btn" onclick="toggleDataPanel()" title="データ管理" style="opacity:1;width:36px;height:36px;font-size:18px">⚙️</button>
   </div>
@@ -2819,6 +2826,42 @@
 </div>
 
 <script>
+  // ===== FIREBASE =====
+  const _firebaseConfig = {
+    apiKey: "AIzaSyCo7KNqe7lsPMQ139KwYOrZLRQ0j3oxDtU",
+    authDomain: "taskflow-73089.firebaseapp.com",
+    databaseURL: "https://taskflow-73089-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "taskflow-73089",
+    storageBucket: "taskflow-73089.firebasestorage.app",
+    messagingSenderId: "1079006629221",
+    appId: "1:1079006629221:web:02b41d47b48522b075258c"
+  };
+  firebase.initializeApp(_firebaseConfig);
+  const _db = firebase.database();
+  const _dataRef = _db.ref('taskflow/data');
+  // このデバイス固有のIDで「自分の書き込み」を識別する
+  const _deviceId = (localStorage.getItem('tf_device_id') || (() => {
+    const id = Math.random().toString(36).slice(2);
+    localStorage.setItem('tf_device_id', id);
+    return id;
+  })());
+  let _lastWriteId = null;
+
+  function setSyncStatus(status) {
+    const dot = document.getElementById('sync-dot');
+    const label = document.getElementById('sync-label');
+    if (!dot || !label) return;
+    if (status === 'synced') {
+      dot.style.background = '#10b981'; label.textContent = '同期済み';
+    } else if (status === 'syncing') {
+      dot.style.background = '#f59e0b'; label.textContent = '同期中…';
+    } else if (status === 'error') {
+      dot.style.background = '#ef4444'; label.textContent = '同期エラー';
+    } else {
+      dot.style.background = '#94a3b8'; label.textContent = 'オフライン';
+    }
+  }
+
   // ===== STATE =====
   let state = {
     tasks: [],
@@ -3025,11 +3068,28 @@ self.addEventListener('fetch', e => {
 
   // ===== STORAGE =====
   function save() {
+    // ローカルバックアップ（オフライン対応）
     localStorage.setItem('taskflow_tasks', JSON.stringify(state.tasks));
     localStorage.setItem('taskflow_categories', JSON.stringify(state.categories));
     localStorage.setItem('taskflow_lists', JSON.stringify(state.lists));
     localStorage.setItem('taskflow_planner', JSON.stringify(state.planner));
     localStorage.setItem('taskflow_archive', JSON.stringify(state.archive));
+    // Firebase に同期
+    const writeId = _deviceId + '_' + Date.now();
+    _lastWriteId = writeId;
+    setSyncStatus('syncing');
+    _dataRef.set({
+      tasks: state.tasks,
+      categories: state.categories,
+      lists: state.lists,
+      planner: state.planner,
+      archive: state.archive || [],
+      _writeId: writeId
+    }).then(() => {
+      setSyncStatus('synced');
+    }).catch(() => {
+      setSyncStatus('error');
+    });
   }
 
   function load() {
@@ -4909,6 +4969,33 @@ self.addEventListener('fetch', e => {
     renderTasks();
     updateNetworkStatus();
     checkIOSInstallBanner();
+
+    // Firebase リアルタイムリスナー
+    _dataRef.on('value', function(snapshot) {
+      const data = snapshot.val();
+      if (!data) { setSyncStatus('synced'); return; }
+      // 自分の書き込みは無視
+      if (data._writeId && data._writeId === _lastWriteId) return;
+      // 他デバイスの変更を反映
+      if (data.tasks)      state.tasks = data.tasks;
+      if (data.categories) state.categories = data.categories;
+      if (data.lists)      state.lists = data.lists;
+      if (data.archive)    state.archive = data.archive;
+      if (data.planner) {
+        const p = data.planner;
+        if (!p.goals || typeof p.goals !== 'object') p.goals = { monthly: {}, weekly: {}, daily: {} };
+        ['monthly','weekly','daily'].forEach(tab => {
+          if (!p.goals[tab] || Array.isArray(p.goals[tab])) p.goals[tab] = {};
+        });
+        if (!p.dailyTodos || Array.isArray(p.dailyTodos)) p.dailyTodos = {};
+        if (!p.reminders || Array.isArray(p.reminders)) p.reminders = {};
+        state.planner = { ...state.planner, ...p };
+      }
+      setSyncStatus('synced');
+      renderTasks();
+    }, function() {
+      setSyncStatus('error');
+    });
   }
 
   init();
