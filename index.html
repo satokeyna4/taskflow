@@ -2085,8 +2085,8 @@
     }
   </style>
   <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -2340,6 +2340,7 @@
               </div>
               <div style="display:flex;align-items:center;gap:6px">
                 <button class="tt-nav-btn" style="padding:0 10px;width:auto;font-size:12px" onclick="ttGoToday()">今日</button>
+                <button class="tt-nav-btn" onclick="openBulkTTModal()" title="テキストで一括入力" style="padding:0 8px;width:auto;font-size:11px;color:var(--primary);border-color:var(--primary)">📋 一括</button>
                 <button class="tt-nav-btn" onclick="openTTModal()" title="予定を追加" style="background:var(--primary);color:white;border-color:var(--primary);width:28px">＋</button>
               </div>
             </div>
@@ -2495,6 +2496,32 @@
   </div>
 </div>
 
+<!-- BULK TT INPUT MODAL -->
+<div class="modal-overlay" id="bulk-tt-modal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <h2 class="modal-title">📋 予定を一括入力</h2>
+      <button class="modal-close" onclick="closeModal('bulk-tt-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:var(--surface2);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text-muted);margin-bottom:12px;line-height:1.8">
+        <strong style="color:var(--text)">書き方（1行に1つの予定）</strong><br>
+        <code style="color:var(--primary)">9:00-10:00 朝会</code><br>
+        <code style="color:var(--primary)">10:30~12:00 プロジェクト作業 #仕事</code><br>
+        <code style="color:var(--primary)">13:00 ランチ</code>（終了時間省略→1時間）<br>
+        <span style="font-size:11px">※ #タグでカテゴリを色分けできます</span>
+      </div>
+      <textarea id="bulk-tt-input" rows="12" placeholder="9:00-10:00 朝会&#10;10:30-12:00 プロジェクト作業&#10;12:00-13:00 ランチ&#10;14:00-15:00 1on1&#10;15:30-17:00 資料作成"
+        style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;line-height:1.7;box-sizing:border-box;background:var(--surface)"></textarea>
+      <div id="bulk-tt-preview" style="margin-top:8px;font-size:12px;color:var(--text-muted)"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('bulk-tt-modal')">キャンセル</button>
+      <button class="btn btn-primary" onclick="saveBulkTT()">追加する</button>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST CONTAINER -->
 <div id="toast-container"></div>
 
@@ -2627,6 +2654,22 @@
   <button class="data-close" onclick="toggleDataPanel()">×</button>
   <h3>⚙️ データ管理</h3>
   <p>バックアップや他の端末への移行に使えます</p>
+
+  <!-- 同期コード -->
+  <div style="background:var(--primary-light);border:1.5px solid var(--primary);border-radius:10px;padding:12px;margin-bottom:12px">
+    <div style="font-size:12px;font-weight:600;color:var(--primary);margin-bottom:6px">🔑 あなたの同期コード</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <span id="sync-code-display" style="font-size:20px;font-weight:700;letter-spacing:3px;color:var(--text);font-family:monospace"></span>
+      <button onclick="navigator.clipboard.writeText(document.getElementById('sync-code-display').textContent).then(()=>alert('コピーしました！'))" style="border:none;background:var(--primary);color:white;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer">コピー</button>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">このコードを他のデバイスで入力するとデータが同期されます</div>
+    <div style="display:flex;gap:6px">
+      <input id="sync-code-input" type="text" placeholder="他の人のコードを入力…" maxlength="12"
+        style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;text-transform:uppercase;font-family:monospace">
+      <button onclick="changeSyncCode(document.getElementById('sync-code-input').value)"
+        style="border:1px solid var(--primary);background:white;color:var(--primary);border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;white-space:nowrap">切替</button>
+    </div>
+  </div>
   <button class="data-btn" onclick="saveOfflineCopy()" style="border-color:#6366f1;background:var(--primary-light)">
     <span>💾</span>
     <div>
@@ -2836,9 +2879,24 @@
     messagingSenderId: "1079006629221",
     appId: "1:1079006629221:web:02b41d47b48522b075258c"
   };
-  firebase.initializeApp(_firebaseConfig);
-  const _db = firebase.database();
-  const _dataRef = _db.ref('taskflow/data');
+  let _db = null;
+  try {
+    if (typeof firebase === 'undefined') throw new Error('Firebase SDK not loaded');
+    firebase.initializeApp(_firebaseConfig);
+    _db = firebase.database();
+  } catch(e) {
+    console.warn('Firebase初期化失敗（オフラインモードで動作）:', e);
+  }
+
+  // ユーザーごとに独立したデータパス（同期コード）
+  function _genSyncCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    return Array.from({length: 8}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  }
+  let _userId = localStorage.getItem('tf_user_id');
+  if (!_userId) { _userId = _genSyncCode(); localStorage.setItem('tf_user_id', _userId); }
+  let _dataRef = _db ? _db.ref('taskflow/users/' + _userId + '/data') : null;
+
   // このデバイス固有のIDで「自分の書き込み」を識別する
   const _deviceId = (localStorage.getItem('tf_device_id') || (() => {
     const id = Math.random().toString(36).slice(2);
@@ -2846,6 +2904,47 @@
     return id;
   })());
   let _lastWriteId = null;
+  let _fbListener = null;
+
+  function _attachFbListener() {
+    if (!_dataRef) { setSyncStatus('offline'); return; }
+    if (_fbListener) _dataRef.off('value', _fbListener);
+    _fbListener = _dataRef.on('value', function(snapshot) {
+      const data = snapshot.val();
+      if (!data) { setSyncStatus('synced'); return; }
+      if (data._writeId && data._writeId === _lastWriteId) return;
+      if (data.tasks)      state.tasks = data.tasks;
+      if (data.categories) state.categories = data.categories;
+      if (data.lists)      state.lists = data.lists;
+      if (data.archive)    state.archive = data.archive;
+      if (data.planner) {
+        const p = data.planner;
+        if (!p.goals || typeof p.goals !== 'object') p.goals = { monthly: {}, weekly: {}, daily: {} };
+        ['monthly','weekly','daily'].forEach(tab => {
+          if (!p.goals[tab] || Array.isArray(p.goals[tab])) p.goals[tab] = {};
+        });
+        if (!p.dailyTodos || Array.isArray(p.dailyTodos)) p.dailyTodos = {};
+        if (!p.reminders || Array.isArray(p.reminders)) p.reminders = {};
+        state.planner = { ...state.planner, ...p };
+      }
+      setSyncStatus('synced');
+      renderTasks();
+    }, function() { setSyncStatus('error'); });
+  }
+
+  function changeSyncCode(newCode) {
+    const code = (newCode || '').trim().toUpperCase();
+    if (!code || code.length < 4) { alert('4文字以上の同期コードを入力してください'); return; }
+    if (!confirm(`同期コードを「${code}」に変更しますか？\nこのデバイスのデータは「${code}」のデータに切り替わります。`)) return;
+    _userId = code;
+    localStorage.setItem('tf_user_id', _userId);
+    _dataRef = _db ? _db.ref('taskflow/users/' + _userId + '/data') : null;
+    _lastWriteId = null;
+    _attachFbListener();
+    document.getElementById('sync-code-display').textContent = _userId;
+    alert('同期コードを変更しました。ページをリロードします。');
+    location.reload();
+  }
 
   function setSyncStatus(status) {
     const dot = document.getElementById('sync-dot');
@@ -2995,6 +3094,9 @@ self.addEventListener('fetch', e => {
   // ===== DATA PANEL =====
   function toggleDataPanel() {
     document.getElementById('data-panel').classList.toggle('open');
+    // 同期コードを表示
+    const el = document.getElementById('sync-code-display');
+    if (el) el.textContent = _userId;
   }
 
   function exportData() {
@@ -3075,6 +3177,7 @@ self.addEventListener('fetch', e => {
     localStorage.setItem('taskflow_planner', JSON.stringify(state.planner));
     localStorage.setItem('taskflow_archive', JSON.stringify(state.archive));
     // Firebase に同期
+    if (!_dataRef) { setSyncStatus('offline'); return; }
     const writeId = _deviceId + '_' + Date.now();
     _lastWriteId = writeId;
     setSyncStatus('syncing');
@@ -4320,6 +4423,99 @@ self.addEventListener('fetch', e => {
     renderTimetable();
   }
 
+  // ===== 一括テキスト入力 =====
+  const BULK_COLORS = ['#6366f1','#10b981','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899','#06b6d4'];
+  const _tagColorMap = {};
+
+  function parseBulkTTLine(line) {
+    line = line.trim();
+    if (!line || line.startsWith('//') || line.startsWith('#') && !line.match(/\d/)) return null;
+
+    // 時間パターン: 9:00-10:00 / 9:00~10:00 / 9:00–10:00
+    const timeRange = line.match(/^(\d{1,2}):(\d{2})\s*[-~–〜]\s*(\d{1,2}):(\d{2})\s+(.+)$/);
+    if (timeRange) {
+      const [, sh, sm, eh, em, rest] = timeRange;
+      const start = `${String(sh).padStart(2,'0')}:${sm}`;
+      const end   = `${String(eh).padStart(2,'0')}:${em}`;
+      const { title, tag } = extractTag(rest);
+      return { start, end, title, tag };
+    }
+
+    // 開始時間のみ（終了時間なし → 1時間後）
+    const timeOnly = line.match(/^(\d{1,2}):(\d{2})\s+(.+)$/);
+    if (timeOnly) {
+      const [, h, m, rest] = timeOnly;
+      const sh = parseInt(h), sm = parseInt(m);
+      const eh = Math.min(sh + 1, 23);
+      const start = `${String(sh).padStart(2,'0')}:${String(sm).padStart(2,'0')}`;
+      const end   = `${String(eh).padStart(2,'0')}:${String(sm).padStart(2,'0')}`;
+      const { title, tag } = extractTag(rest);
+      return { start, end, title, tag };
+    }
+
+    return null;
+  }
+
+  function extractTag(text) {
+    const tagMatch = text.match(/#(\S+)/);
+    const tag = tagMatch ? tagMatch[1] : null;
+    const title = text.replace(/#\S+/g, '').trim();
+    return { title, tag };
+  }
+
+  function getTagColor(tag) {
+    if (!tag) return '#6366f1';
+    if (!_tagColorMap[tag]) {
+      const used = Object.keys(_tagColorMap).length;
+      _tagColorMap[tag] = BULK_COLORS[used % BULK_COLORS.length];
+    }
+    return _tagColorMap[tag];
+  }
+
+  function openBulkTTModal() {
+    document.getElementById('bulk-tt-input').value = '';
+    document.getElementById('bulk-tt-preview').textContent = '';
+    openModal('bulk-tt-modal');
+    // リアルタイムプレビュー
+    document.getElementById('bulk-tt-input').oninput = function() {
+      const lines = this.value.split('\n');
+      const parsed = lines.map(parseBulkTTLine).filter(Boolean);
+      if (!parsed.length) {
+        document.getElementById('bulk-tt-preview').textContent = '';
+        return;
+      }
+      document.getElementById('bulk-tt-preview').textContent =
+        `✅ ${parsed.length} 件の予定を認識しました`;
+    };
+  }
+
+  function saveBulkTT() {
+    const text = document.getElementById('bulk-tt-input').value;
+    const lines = text.split('\n');
+    const parsed = lines.map(parseBulkTTLine).filter(Boolean);
+
+    if (!parsed.length) {
+      showToast('⚠️ 認識できた予定がありません', 'error');
+      return;
+    }
+
+    const dateStr = state.ttDate;
+    if (!state.planner.schedule) state.planner.schedule = {};
+    if (!state.planner.schedule[dateStr]) state.planner.schedule[dateStr] = [];
+
+    parsed.forEach(({ start, end, title, tag }) => {
+      state.planner.schedule[dateStr].push({
+        id: genId(), title, start, end, note: tag ? `#${tag}` : '',
+        color: getTagColor(tag)
+      });
+    });
+
+    save();
+    closeModal('bulk-tt-modal');
+    renderTimetable();
+    showToast(`📅 ${parsed.length} 件の予定を追加しました`, 'success');
+  }
+
   function deleteTTBlock(id) {
     const dateStr = state.ttDate;
     if (!state.planner.schedule || !state.planner.schedule[dateStr]) return;
@@ -4971,30 +5167,20 @@ self.addEventListener('fetch', e => {
     checkIOSInstallBanner();
 
     // Firebase リアルタイムリスナー
-    _dataRef.on('value', function(snapshot) {
-      const data = snapshot.val();
-      if (!data) { setSyncStatus('synced'); return; }
-      // 自分の書き込みは無視
-      if (data._writeId && data._writeId === _lastWriteId) return;
-      // 他デバイスの変更を反映
-      if (data.tasks)      state.tasks = data.tasks;
-      if (data.categories) state.categories = data.categories;
-      if (data.lists)      state.lists = data.lists;
-      if (data.archive)    state.archive = data.archive;
-      if (data.planner) {
-        const p = data.planner;
-        if (!p.goals || typeof p.goals !== 'object') p.goals = { monthly: {}, weekly: {}, daily: {} };
-        ['monthly','weekly','daily'].forEach(tab => {
-          if (!p.goals[tab] || Array.isArray(p.goals[tab])) p.goals[tab] = {};
+    _attachFbListener();
+
+    // 旧パス(taskflow/data)からの一回限りのデータ移行
+    if (!_dataRef || !_db) return;
+    _dataRef.once('value').then(function(newSnap) {
+      if (newSnap.val()) return; // 新パスにすでにデータあり → 移行不要
+      _db.ref('taskflow/data').once('value').then(function(oldSnap) {
+        const oldData = oldSnap.val();
+        if (!oldData) return; // 旧パスにもデータなし
+        // 旧データを新パスに移行して保存
+        _dataRef.set(oldData).then(function() {
+          console.log('旧データを新パスに移行しました');
         });
-        if (!p.dailyTodos || Array.isArray(p.dailyTodos)) p.dailyTodos = {};
-        if (!p.reminders || Array.isArray(p.reminders)) p.reminders = {};
-        state.planner = { ...state.planner, ...p };
-      }
-      setSyncStatus('synced');
-      renderTasks();
-    }, function() {
-      setSyncStatus('error');
+      });
     });
   }
 
