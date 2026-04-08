@@ -2084,9 +2084,7 @@
       .view-btn { padding: 6px 10px; font-size: 12px; }
     }
   </style>
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+  <!-- Firebase: SDKなし・REST APIで直接通信 -->
 </head>
 <body>
 
@@ -2680,17 +2678,20 @@
   <button class="data-btn" onclick="exportData()">
     <span>📤</span>
     <div>
-      <div>データをエクスポート</div>
-      <div style="font-size:11px;font-weight:400;color:var(--text-muted)">JSONファイルとして保存</div>
+      <div>データをエクスポート／コピー</div>
+      <div style="font-size:11px;font-weight:400;color:var(--text-muted)">クリップボードにコピー＋JSONファイル保存</div>
     </div>
   </button>
+  <textarea id="export-text-area" style="display:none;width:100%;height:80px;font-size:10px;font-family:monospace;padding:6px;border:1px solid var(--border);border-radius:6px;resize:vertical;box-sizing:border-box;margin-bottom:6px" placeholder="エクスポートデータ" readonly onclick="this.select()"></textarea>
   <button class="data-btn" onclick="document.getElementById('import-file').click()">
     <span>📥</span>
     <div>
       <div>データをインポート</div>
-      <div style="font-size:11px;font-weight:400;color:var(--text-muted)">JSONファイルから復元</div>
+      <div style="font-size:11px;font-weight:400;color:var(--text-muted)">JSONファイルまたはテキスト貼り付けから復元</div>
     </div>
   </button>
+  <textarea id="import-text-area" style="width:100%;height:60px;font-size:10px;font-family:monospace;padding:6px;border:1px solid var(--border);border-radius:6px;resize:vertical;box-sizing:border-box;margin-bottom:4px" placeholder="またはここにJSONテキストを貼り付け…"></textarea>
+  <button onclick="importFromText()" style="width:100%;padding:6px;background:var(--primary);color:white;border:none;border-radius:6px;font-size:12px;cursor:pointer;margin-bottom:8px">テキストから復元</button>
   <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(event)">
   <hr class="data-divider">
   <h3>📱 どこからでも使う</h3>
@@ -2869,67 +2870,85 @@
 </div>
 
 <script>
-  // ===== FIREBASE =====
-  const _firebaseConfig = {
-    apiKey: "AIzaSyCo7KNqe7lsPMQ139KwYOrZLRQ0j3oxDtU",
-    authDomain: "taskflow-73089.firebaseapp.com",
-    databaseURL: "https://taskflow-73089-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "taskflow-73089",
-    storageBucket: "taskflow-73089.firebasestorage.app",
-    messagingSenderId: "1079006629221",
-    appId: "1:1079006629221:web:02b41d47b48522b075258c"
-  };
-  let _db = null;
-  try {
-    if (typeof firebase === 'undefined') throw new Error('Firebase SDK not loaded');
-    firebase.initializeApp(_firebaseConfig);
-    _db = firebase.database();
-  } catch(e) {
-    console.warn('Firebase初期化失敗（オフラインモードで動作）:', e);
-  }
+  // ===== FIREBASE REST API（SDKなし）=====
+  const _FB_BASE = 'https://taskflow-73089-default-rtdb.asia-southeast1.firebasedatabase.app';
 
-  // ユーザーごとに独立したデータパス（同期コード）
   function _genSyncCode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     return Array.from({length: 8}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
   }
   let _userId = localStorage.getItem('tf_user_id');
   if (!_userId) { _userId = _genSyncCode(); localStorage.setItem('tf_user_id', _userId); }
-  let _dataRef = _db ? _db.ref('taskflow/users/' + _userId + '/data') : null;
 
-  // このデバイス固有のIDで「自分の書き込み」を識別する
   const _deviceId = (localStorage.getItem('tf_device_id') || (() => {
     const id = Math.random().toString(36).slice(2);
     localStorage.setItem('tf_device_id', id);
     return id;
   })());
   let _lastWriteId = null;
-  let _fbListener = null;
+  let _pollTimer = null;
+  let _lastKnownWriteId = null;
+
+  function _fbUrl() {
+    return `${_FB_BASE}/taskflow/users/${_userId}/data.json`;
+  }
+
+  function _applyFbData(data) {
+    if (!data) return;
+    if (data._writeId && data._writeId === _lastWriteId) return;
+    if (data.tasks)      state.tasks = data.tasks;
+    if (data.categories) state.categories = data.categories;
+    if (data.lists)      state.lists = data.lists;
+    if (data.archive)    state.archive = data.archive;
+    if (data.planner) {
+      const p = data.planner;
+      if (!p.goals || typeof p.goals !== 'object') p.goals = { monthly: {}, weekly: {}, daily: {} };
+      ['monthly','weekly','daily'].forEach(tab => {
+        if (!p.goals[tab] || Array.isArray(p.goals[tab])) p.goals[tab] = {};
+      });
+      if (!p.dailyTodos || Array.isArray(p.dailyTodos)) p.dailyTodos = {};
+      if (!p.reminders || Array.isArray(p.reminders)) p.reminders = {};
+      state.planner = { ...state.planner, ...p };
+    }
+    _lastKnownWriteId = data._writeId;
+    setSyncStatus('synced');
+    renderTasks();
+  }
+
+  function _fetchFb() {
+    return fetch(_fbUrl(), { mode: 'cors' })
+      .then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      });
+  }
 
   function _attachFbListener() {
-    if (!_dataRef) { setSyncStatus('offline'); return; }
-    if (_fbListener) _dataRef.off('value', _fbListener);
-    _fbListener = _dataRef.on('value', function(snapshot) {
-      const data = snapshot.val();
-      if (!data) { setSyncStatus('synced'); return; }
-      if (data._writeId && data._writeId === _lastWriteId) return;
-      if (data.tasks)      state.tasks = data.tasks;
-      if (data.categories) state.categories = data.categories;
-      if (data.lists)      state.lists = data.lists;
-      if (data.archive)    state.archive = data.archive;
-      if (data.planner) {
-        const p = data.planner;
-        if (!p.goals || typeof p.goals !== 'object') p.goals = { monthly: {}, weekly: {}, daily: {} };
-        ['monthly','weekly','daily'].forEach(tab => {
-          if (!p.goals[tab] || Array.isArray(p.goals[tab])) p.goals[tab] = {};
-        });
-        if (!p.dailyTodos || Array.isArray(p.dailyTodos)) p.dailyTodos = {};
-        if (!p.reminders || Array.isArray(p.reminders)) p.reminders = {};
-        state.planner = { ...state.planner, ...p };
+    // 起動時に一度読み込む
+    _fetchFb().then(function(data) {
+      if (data) _applyFbData(data);
+      else setSyncStatus('synced');
+    }).catch(function(e) {
+      console.warn('Firebase読み込みエラー:', e.message || e);
+      if (location.protocol === 'file:') {
+        console.warn('⚠️ ローカルファイルから開いています。GitHub PagesのURLで開いてください: https://satokeyna4.github.io/taskflow/');
+        setSyncStatus('offline');
+      } else {
+        setSyncStatus('error');
       }
-      setSyncStatus('synced');
-      renderTasks();
-    }, function() { setSyncStatus('error'); });
+    });
+
+    // 10秒ごとにポーリングして他デバイスの変更を取得
+    if (_pollTimer) clearInterval(_pollTimer);
+    _pollTimer = setInterval(function() {
+      _fetchFb().then(function(data) {
+        if (!data) return;
+        // 自分の書き込みでなく、前回と異なる場合のみ反映
+        if (data._writeId && data._writeId === _lastWriteId) return;
+        if (data._writeId && data._writeId === _lastKnownWriteId) return;
+        _applyFbData(data);
+      }).catch(function() { setSyncStatus('error'); });
+    }, 10000);
   }
 
   function changeSyncCode(newCode) {
@@ -2938,10 +2957,7 @@
     if (!confirm(`同期コードを「${code}」に変更しますか？\nこのデバイスのデータは「${code}」のデータに切り替わります。`)) return;
     _userId = code;
     localStorage.setItem('tf_user_id', _userId);
-    _dataRef = _db ? _db.ref('taskflow/users/' + _userId + '/data') : null;
     _lastWriteId = null;
-    _attachFbListener();
-    document.getElementById('sync-code-display').textContent = _userId;
     alert('同期コードを変更しました。ページをリロードします。');
     location.reload();
   }
@@ -3106,15 +3122,67 @@ self.addEventListener('fetch', e => {
       tasks: state.tasks,
       categories: state.categories,
       lists: state.lists,
+      planner: state.planner,
+      archive: state.archive,
     };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `taskflow-backup-${new Date().toISOString().slice(0,10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('📤 エクスポートしました！', 'success');
+    const json = JSON.stringify(data, null, 2);
+    // まずダウンロード試行
+    try {
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `taskflow-backup-${new Date().toISOString().slice(0,10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch(e) {}
+    // クリップボードにもコピー
+    navigator.clipboard.writeText(json).then(() => {
+      showToast('📤 データをクリップボードにコピーしました！', 'success');
+      document.getElementById('export-text-area').style.display = 'block';
+      document.getElementById('export-text-area').value = json;
+    }).catch(() => {
+      document.getElementById('export-text-area').style.display = 'block';
+      document.getElementById('export-text-area').value = json;
+      showToast('📤 下のテキストをコピーしてください', 'success');
+    });
+  }
+
+  function _applyImportData(data) {
+    if (!data.tasks) throw new Error('invalid');
+    if (!confirm(`バックアップ（${data.exportedAt ? data.exportedAt.slice(0,10) : '不明'}）を読み込みます。現在のデータは上書きされます。よろしいですか？`)) return false;
+    state.tasks = data.tasks || [];
+    state.categories = data.categories || state.categories;
+    state.lists = data.lists || [];
+    if (data.planner) {
+      const p = data.planner;
+      if (!p.goals || typeof p.goals !== 'object') p.goals = { monthly: {}, weekly: {}, daily: {} };
+      ['monthly','weekly','daily'].forEach(tab => {
+        if (!p.goals[tab] || Array.isArray(p.goals[tab])) p.goals[tab] = {};
+      });
+      if (!p.dailyTodos || Array.isArray(p.dailyTodos)) p.dailyTodos = {};
+      if (!p.reminders || Array.isArray(p.reminders)) p.reminders = {};
+      state.planner = { ...state.planner, ...p };
+    }
+    if (data.archive) state.archive = data.archive;
+    save();
+    renderTasks();
+    showToast('📥 インポートしました！', 'success');
+    toggleDataPanel();
+    return true;
+  }
+
+  function importFromText() {
+    const text = document.getElementById('import-text-area').value.trim();
+    if (!text) { showToast('❌ テキストを貼り付けてください', 'error'); return; }
+    try {
+      const data = JSON.parse(text);
+      _applyImportData(data);
+    } catch {
+      showToast('❌ JSONの形式が正しくありません', 'error');
+    }
   }
 
   function importData(e) {
@@ -3124,15 +3192,7 @@ self.addEventListener('fetch', e => {
     reader.onload = (ev) => {
       try {
         const data = JSON.parse(ev.target.result);
-        if (!data.tasks) throw new Error('invalid');
-        if (!confirm(`バックアップ（${data.exportedAt ? data.exportedAt.slice(0,10) : '不明'}）を読み込みます。現在のデータは上書きされます。よろしいですか？`)) return;
-        state.tasks = data.tasks || [];
-        state.categories = data.categories || state.categories;
-        state.lists = data.lists || [];
-        save();
-        renderTasks();
-        showToast('📥 インポートしました！', 'success');
-        toggleDataPanel();
+        _applyImportData(data);
       } catch {
         showToast('❌ ファイルの形式が正しくありません', 'error');
       }
@@ -3176,23 +3236,24 @@ self.addEventListener('fetch', e => {
     localStorage.setItem('taskflow_lists', JSON.stringify(state.lists));
     localStorage.setItem('taskflow_planner', JSON.stringify(state.planner));
     localStorage.setItem('taskflow_archive', JSON.stringify(state.archive));
-    // Firebase に同期
-    if (!_dataRef) { setSyncStatus('offline'); return; }
+    // Firebase REST API で同期
     const writeId = _deviceId + '_' + Date.now();
     _lastWriteId = writeId;
     setSyncStatus('syncing');
-    _dataRef.set({
-      tasks: state.tasks,
-      categories: state.categories,
-      lists: state.lists,
-      planner: state.planner,
-      archive: state.archive || [],
-      _writeId: writeId
-    }).then(() => {
-      setSyncStatus('synced');
-    }).catch(() => {
-      setSyncStatus('error');
-    });
+    fetch(_fbUrl(), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tasks: state.tasks,
+        categories: state.categories,
+        lists: state.lists,
+        planner: state.planner,
+        archive: state.archive || [],
+        _writeId: writeId
+      })
+    }).then(r => {
+      if (r.ok) setSyncStatus('synced'); else setSyncStatus('error');
+    }).catch(() => setSyncStatus('error'));
   }
 
   function load() {
@@ -5170,18 +5231,18 @@ self.addEventListener('fetch', e => {
     _attachFbListener();
 
     // 旧パス(taskflow/data)からの一回限りのデータ移行
-    if (!_dataRef || !_db) return;
-    _dataRef.once('value').then(function(newSnap) {
-      if (newSnap.val()) return; // 新パスにすでにデータあり → 移行不要
-      _db.ref('taskflow/data').once('value').then(function(oldSnap) {
-        const oldData = oldSnap.val();
-        if (!oldData) return; // 旧パスにもデータなし
-        // 旧データを新パスに移行して保存
-        _dataRef.set(oldData).then(function() {
-          console.log('旧データを新パスに移行しました');
-        });
+    const _oldUrl = `${_FB_BASE}/taskflow/data.json`;
+    fetch(_fbUrl()).then(r => r.json()).then(newData => {
+      if (newData) return; // 新パスにデータあり → スキップ
+      return fetch(_oldUrl).then(r => r.json()).then(oldData => {
+        if (!oldData) return;
+        return fetch(_fbUrl(), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(oldData)
+        }).then(() => console.log('旧データを新パスへ移行しました'));
       });
-    });
+    }).catch(() => {});
   }
 
   init();
