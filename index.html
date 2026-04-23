@@ -2298,19 +2298,19 @@
                 <div style="font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:4px">✅ うまくいったこと</div>
                 <textarea class="reflection-textarea" id="reflect-good" rows="2"
                   placeholder="今日の成功・達成・良かったこと..."
-                  oninput="saveReflection()"></textarea>
+                  oninput="if(!event.isComposing)saveReflection()" oncompositionend="saveReflection()"></textarea>
               </div>
               <div>
                 <div style="font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:4px">📈 改善したいこと</div>
                 <textarea class="reflection-textarea" id="reflect-improve" rows="2"
                   placeholder="明日はこうしたい、気づいたこと..."
-                  oninput="saveReflection()"></textarea>
+                  oninput="if(!event.isComposing)saveReflection()" oncompositionend="saveReflection()"></textarea>
               </div>
               <div>
                 <div style="font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:4px">🙏 感謝すること</div>
                 <textarea class="reflection-textarea" id="reflect-gratitude" rows="2"
                   placeholder="今日ありがたかったこと..."
-                  oninput="saveReflection()"></textarea>
+                  oninput="if(!event.isComposing)saveReflection()" oncompositionend="saveReflection()"></textarea>
               </div>
             </div>
           </div>
@@ -2338,7 +2338,8 @@
               </div>
               <div style="display:flex;align-items:center;gap:6px">
                 <button class="tt-nav-btn" style="padding:0 10px;width:auto;font-size:12px" onclick="ttGoToday()">今日</button>
-                <button class="tt-nav-btn" onclick="openBulkTTModal()" title="テキストで一括入力" style="padding:0 8px;width:auto;font-size:11px;color:var(--primary);border-color:var(--primary)">📋 一括</button>
+                <button class="tt-nav-btn" onclick="copyTimetableAsText()" title="予定をテキストとしてコピー" style="padding:0 8px;width:auto;font-size:11px;color:#10b981;border-color:#10b981">📤 コピー</button>
+                <button class="tt-nav-btn" onclick="openBulkTTModal()" title="テキストで一括入力" style="padding:0 8px;width:auto;font-size:11px;color:var(--primary);border-color:var(--primary)">📋 貼付</button>
                 <button class="tt-nav-btn" onclick="openTTModal()" title="予定を追加" style="background:var(--primary);color:white;border-color:var(--primary);width:28px">＋</button>
               </div>
             </div>
@@ -2498,24 +2499,37 @@
 <div class="modal-overlay" id="bulk-tt-modal">
   <div class="modal" style="max-width:480px">
     <div class="modal-header">
-      <h2 class="modal-title">📋 予定を一括入力</h2>
+      <h2 class="modal-title">📋 予定を貼り付け一括入力</h2>
       <button class="modal-close" onclick="closeModal('bulk-tt-modal')">×</button>
     </div>
     <div class="modal-body">
-      <div style="background:var(--surface2);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text-muted);margin-bottom:12px;line-height:1.8">
+      <div style="background:var(--surface2);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.8">
         <strong style="color:var(--text)">書き方（1行に1つの予定）</strong><br>
         <code style="color:var(--primary)">9:00-10:00 朝会</code><br>
         <code style="color:var(--primary)">10:30~12:00 プロジェクト作業 #仕事</code><br>
         <code style="color:var(--primary)">13:00 ランチ</code>（終了時間省略→1時間）<br>
         <span style="font-size:11px">※ #タグでカテゴリを色分けできます</span>
       </div>
-      <textarea id="bulk-tt-input" rows="12" placeholder="9:00-10:00 朝会&#10;10:30-12:00 プロジェクト作業&#10;12:00-13:00 ランチ&#10;14:00-15:00 1on1&#10;15:30-17:00 資料作成"
+      <!-- 追加/上書き切替 -->
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;padding:6px 12px;border-radius:6px;border:1.5px solid var(--border);flex:1;justify-content:center" id="bulk-mode-add-label">
+          <input type="radio" name="bulk-tt-mode" value="add" checked onchange="updateBulkModeUI()"> ➕ 追加
+        </label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;padding:6px 12px;border-radius:6px;border:1.5px solid var(--border);flex:1;justify-content:center" id="bulk-mode-replace-label">
+          <input type="radio" name="bulk-tt-mode" value="replace" onchange="updateBulkModeUI()"> 🔄 上書き
+        </label>
+      </div>
+      <!-- 現在の予定を読み込むボタン -->
+      <div style="margin-bottom:8px">
+        <button onclick="loadCurrentScheduleToEditor()" style="font-size:12px;color:var(--primary);background:none;border:1px solid var(--primary);border-radius:6px;padding:4px 10px;cursor:pointer">📥 現在の予定を読み込む</button>
+      </div>
+      <textarea id="bulk-tt-input" rows="10" placeholder="9:00-10:00 朝会&#10;10:30-12:00 プロジェクト作業&#10;12:00-13:00 ランチ&#10;14:00-15:00 1on1&#10;15:30-17:00 資料作成"
         style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;line-height:1.7;box-sizing:border-box;background:var(--surface)"></textarea>
       <div id="bulk-tt-preview" style="margin-top:8px;font-size:12px;color:var(--text-muted)"></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('bulk-tt-modal')">キャンセル</button>
-      <button class="btn btn-primary" onclick="saveBulkTT()">追加する</button>
+      <button class="btn btn-primary" id="bulk-tt-save-btn" onclick="saveBulkTT()">➕ 追加する</button>
     </div>
   </div>
 </div>
@@ -2948,7 +2962,7 @@
         if (data._writeId && data._writeId === _lastKnownWriteId) return;
         _applyFbData(data);
       }).catch(function() { setSyncStatus('error'); });
-    }, 10000);
+    }, 3000);
   }
 
   function changeSyncCode(newCode) {
@@ -3881,9 +3895,10 @@ self.addEventListener('fetch', e => {
     // reflection
     document.getElementById('reflection-date').textContent = state.ttDate.replace(/-/g,'/');
     const ref = (p.reflections || {})[state.ttDate] || {};
-    document.getElementById('reflect-good').value = ref.good || '';
-    document.getElementById('reflect-improve').value = ref.improve || '';
-    document.getElementById('reflect-gratitude').value = ref.gratitude || '';
+    const _focusedId = document.activeElement ? document.activeElement.id : null;
+    if (_focusedId !== 'reflect-good')      document.getElementById('reflect-good').value = ref.good || '';
+    if (_focusedId !== 'reflect-improve')   document.getElementById('reflect-improve').value = ref.improve || '';
+    if (_focusedId !== 'reflect-gratitude') document.getElementById('reflect-gratitude').value = ref.gratitude || '';
 
     // timetable
     renderTimetable();
@@ -4191,9 +4206,10 @@ self.addEventListener('fetch', e => {
     const p = state.planner;
     document.getElementById('reflection-date').textContent = state.ttDate.replace(/-/g,'/');
     const ref = (p.reflections || {})[state.ttDate] || {};
-    document.getElementById('reflect-good').value = ref.good || '';
-    document.getElementById('reflect-improve').value = ref.improve || '';
-    document.getElementById('reflect-gratitude').value = ref.gratitude || '';
+    const _focusedId = document.activeElement ? document.activeElement.id : null;
+    if (_focusedId !== 'reflect-good')      document.getElementById('reflect-good').value = ref.good || '';
+    if (_focusedId !== 'reflect-improve')   document.getElementById('reflect-improve').value = ref.improve || '';
+    if (_focusedId !== 'reflect-gratitude') document.getElementById('reflect-gratitude').value = ref.gratitude || '';
     // 目標を日付連動で再描画（全タブ対象）
     const goalLabels = {
       monthly: `📅 ${getMonthKey(state.ttDate).replace('-','年')}月`,
@@ -4533,9 +4549,73 @@ self.addEventListener('fetch', e => {
     return _tagColorMap[tag];
   }
 
+  // 予定をテキストとしてクリップボードにコピー
+  function copyTimetableAsText() {
+    const dateStr = state.ttDate;
+    const blocks = ((state.planner.schedule || {})[dateStr] || [])
+      .slice().sort((a, b) => a.start.localeCompare(b.start));
+    if (!blocks.length) {
+      showToast('⚠️ この日に予定がありません', 'error');
+      return;
+    }
+    const lines = blocks.map(b => {
+      let line = `${b.start}-${b.end} ${b.title}`;
+      if (b.note && b.note.trim()) line += ` ${b.note.trim()}`;
+      return line;
+    });
+    const text = lines.join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('📋 予定をクリップボードにコピーしました', 'success');
+    }).catch(() => {
+      prompt('以下をコピーしてください：', text);
+    });
+  }
+
+  // 現在の予定をエディタに読み込む
+  function loadCurrentScheduleToEditor() {
+    const dateStr = state.ttDate;
+    const blocks = ((state.planner.schedule || {})[dateStr] || [])
+      .slice().sort((a, b) => a.start.localeCompare(b.start));
+    if (!blocks.length) {
+      showToast('⚠️ この日に予定がありません', 'error');
+      return;
+    }
+    const lines = blocks.map(b => {
+      let line = `${b.start}-${b.end} ${b.title}`;
+      if (b.note && b.note.trim()) line += ` ${b.note.trim()}`;
+      return line;
+    });
+    document.getElementById('bulk-tt-input').value = lines.join('\n');
+    document.getElementById('bulk-tt-preview').textContent = `✅ ${blocks.length} 件の予定を読み込みました（編集してから保存してください）`;
+  }
+
+  // 追加/上書きモード切替UI更新
+  function updateBulkModeUI() {
+    const mode = document.querySelector('input[name="bulk-tt-mode"]:checked').value;
+    const btn = document.getElementById('bulk-tt-save-btn');
+    const addLabel = document.getElementById('bulk-mode-add-label');
+    const replLabel = document.getElementById('bulk-mode-replace-label');
+    if (mode === 'replace') {
+      btn.textContent = '🔄 上書きする';
+      replLabel.style.borderColor = 'var(--primary)';
+      replLabel.style.color = 'var(--primary)';
+      addLabel.style.borderColor = 'var(--border)';
+      addLabel.style.color = 'var(--text)';
+    } else {
+      btn.textContent = '➕ 追加する';
+      addLabel.style.borderColor = 'var(--primary)';
+      addLabel.style.color = 'var(--primary)';
+      replLabel.style.borderColor = 'var(--border)';
+      replLabel.style.color = 'var(--text)';
+    }
+  }
+
   function openBulkTTModal() {
     document.getElementById('bulk-tt-input').value = '';
     document.getElementById('bulk-tt-preview').textContent = '';
+    // ラジオを「追加」にリセット
+    document.querySelector('input[name="bulk-tt-mode"][value="add"]').checked = true;
+    updateBulkModeUI();
     openModal('bulk-tt-modal');
     // リアルタイムプレビュー
     document.getElementById('bulk-tt-input').oninput = function() {
@@ -4561,8 +4641,16 @@ self.addEventListener('fetch', e => {
     }
 
     const dateStr = state.ttDate;
+    const mode = document.querySelector('input[name="bulk-tt-mode"]:checked').value;
     if (!state.planner.schedule) state.planner.schedule = {};
-    if (!state.planner.schedule[dateStr]) state.planner.schedule[dateStr] = [];
+
+    if (mode === 'replace') {
+      // 上書きモード：既存の予定を削除してから追加
+      state.planner.schedule[dateStr] = [];
+    } else {
+      // 追加モード
+      if (!state.planner.schedule[dateStr]) state.planner.schedule[dateStr] = [];
+    }
 
     parsed.forEach(({ start, end, title, tag }) => {
       state.planner.schedule[dateStr].push({
@@ -4574,7 +4662,8 @@ self.addEventListener('fetch', e => {
     save();
     closeModal('bulk-tt-modal');
     renderTimetable();
-    showToast(`📅 ${parsed.length} 件の予定を追加しました`, 'success');
+    const modeLabel = mode === 'replace' ? '上書き' : '追加';
+    showToast(`📅 ${parsed.length} 件の予定を${modeLabel}しました`, 'success');
   }
 
   function deleteTTBlock(id) {
