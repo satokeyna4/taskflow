@@ -1542,14 +1542,12 @@
       font-size: 10px; opacity: 0.75; margin-top: 2px; overflow: hidden;
     }
     .tt-block-del {
-      position: absolute; top: 3px; right: 3px;
-      background: rgba(0,0,0,0.25); border: none; color: white; cursor: pointer;
-      font-size: 11px; line-height: 1; padding: 2px 5px; border-radius: 4px;
+      position: absolute; top: 2px; right: 2px;
+      background: rgba(0,0,0,0.3); border: none; color: white; cursor: pointer;
+      font-size: 12px; line-height: 1; width: 22px; height: 22px; border-radius: 4px;
       transition: background 0.15s; display: flex; align-items: center; justify-content: center;
     }
-    .tt-block-del:hover { background: rgba(220,38,38,0.85) !important; }
-    .tt-block-abs.tt-single .tt-block-del { display: none; }
-    .tt-block-abs.tt-single:hover .tt-block-del { display: flex; }
+    .tt-block-del:hover, .tt-block-del:active { background: rgba(220,38,38,0.9) !important; }
 
     .tt-now-line {
       position: absolute;
@@ -2490,9 +2488,12 @@
         <input class="form-input" type="text" id="tt-note-input" placeholder="詳細や場所など">
       </div>
     </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal('tt-modal')">キャンセル</button>
-      <button class="btn btn-primary" onclick="saveTTBlock()">保存</button>
+    <div class="modal-footer" style="justify-content:space-between">
+      <button class="btn" id="tt-delete-btn" onclick="deleteTTFromModal()" style="background:#fee2e2;color:#ef4444;border:1px solid #fca5a5;display:none">🗑️ 削除</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" onclick="closeModal('tt-modal')">キャンセル</button>
+        <button class="btn btn-primary" onclick="saveTTBlock()">保存</button>
+      </div>
     </div>
   </div>
 </div>
@@ -4450,6 +4451,7 @@ self.addEventListener('fetch', e => {
 
   function openTTModal(defaultTime = null, editId = null) {
     document.getElementById('tt-edit-id').value = editId || '';
+    const delBtn = document.getElementById('tt-delete-btn');
     if (editId) {
       const dateStr = state.ttDate;
       const blocks = (state.planner.schedule || {})[dateStr] || [];
@@ -4464,10 +4466,12 @@ self.addEventListener('fetch', e => {
         document.querySelectorAll('#tt-color-palette .color-opt').forEach(el => {
           el.classList.toggle('selected', el.dataset.color === b.color);
         });
+        delBtn.style.display = 'inline-flex'; // 編集時は削除ボタンを表示
         openModal('tt-modal');
         return;
       }
     }
+    delBtn.style.display = 'none'; // 新規追加時は削除ボタンを非表示
     document.getElementById('tt-modal-title').textContent = '予定を追加';
     document.getElementById('tt-title-input').value = '';
     document.getElementById('tt-note-input').value = '';
@@ -4484,6 +4488,14 @@ self.addEventListener('fetch', e => {
       el.classList.toggle('selected', el.dataset.color === '#6366f1');
     });
     openModal('tt-modal');
+  }
+
+  function deleteTTFromModal() {
+    const id = document.getElementById('tt-edit-id').value;
+    if (!id) return;
+    if (!confirm('この予定を削除しますか？')) return;
+    closeModal('tt-modal');
+    deleteTTBlock(id);
   }
 
   function saveTTBlock() {
