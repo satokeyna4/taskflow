@@ -1543,12 +1543,13 @@
     }
     .tt-block-del {
       position: absolute; top: 3px; right: 3px;
-      background: none; border: none; color: white; cursor: pointer;
-      font-size: 13px; opacity: 0; line-height: 1; padding: 0;
-      transition: opacity 0.15s;
+      background: rgba(0,0,0,0.25); border: none; color: white; cursor: pointer;
+      font-size: 11px; line-height: 1; padding: 2px 5px; border-radius: 4px;
+      transition: background 0.15s; display: flex; align-items: center; justify-content: center;
     }
-    .tt-block-abs:hover .tt-block-del { opacity: 0.8; }
-    .tt-block-del:hover { opacity: 1 !important; }
+    .tt-block-del:hover { background: rgba(220,38,38,0.85) !important; }
+    .tt-block-abs.tt-single .tt-block-del { display: none; }
+    .tt-block-abs.tt-single:hover .tt-block-del { display: flex; }
 
     .tt-now-line {
       position: absolute;
@@ -2340,6 +2341,7 @@
                 <button class="tt-nav-btn" style="padding:0 10px;width:auto;font-size:12px" onclick="ttGoToday()">今日</button>
                 <button class="tt-nav-btn" onclick="copyTimetableAsText()" title="予定をテキストとしてコピー" style="padding:0 8px;width:auto;font-size:11px;color:#10b981;border-color:#10b981">📤 コピー</button>
                 <button class="tt-nav-btn" onclick="openBulkTTModal()" title="テキストで一括入力" style="padding:0 8px;width:auto;font-size:11px;color:var(--primary);border-color:var(--primary)">📋 貼付</button>
+                <button class="tt-nav-btn" onclick="deleteAllTTBlocks()" title="この日の予定を全削除" style="padding:0 8px;width:auto;font-size:11px;color:#ef4444;border-color:#ef4444">🗑️ 全削除</button>
                 <button class="tt-nav-btn" onclick="openTTModal()" title="予定を追加" style="background:var(--primary);color:white;border-color:var(--primary);width:28px">＋</button>
               </div>
             </div>
@@ -2909,7 +2911,16 @@
 
   function _applyFbData(data) {
     if (!data) return;
+    // 自分の最新書き込みと同じなら無視
     if (data._writeId && data._writeId === _lastWriteId) return;
+    // すでに適用済みなら無視
+    if (data._writeId && data._writeId === _lastKnownWriteId) return;
+    // Firebaseのデータがローカルより古い場合は無視（ローカルを優先）
+    const localTs = parseInt(localStorage.getItem('taskflow_local_ts') || '0');
+    if (data._updatedAt && data._updatedAt < localTs) {
+      setSyncStatus('synced');
+      return;
+    }
     if (data.tasks)      state.tasks = data.tasks;
     if (data.categories) state.categories = data.categories;
     if (data.lists)      state.lists = data.lists;
@@ -3245,13 +3256,15 @@ self.addEventListener('fetch', e => {
   // ===== STORAGE =====
   function save() {
     // ローカルバックアップ（オフライン対応）
+    const now = Date.now();
     localStorage.setItem('taskflow_tasks', JSON.stringify(state.tasks));
     localStorage.setItem('taskflow_categories', JSON.stringify(state.categories));
     localStorage.setItem('taskflow_lists', JSON.stringify(state.lists));
     localStorage.setItem('taskflow_planner', JSON.stringify(state.planner));
     localStorage.setItem('taskflow_archive', JSON.stringify(state.archive));
+    localStorage.setItem('taskflow_local_ts', String(now)); // ローカル更新タイムスタンプ
     // Firebase REST API で同期
-    const writeId = _deviceId + '_' + Date.now();
+    const writeId = _deviceId + '_' + now;
     _lastWriteId = writeId;
     setSyncStatus('syncing');
     fetch(_fbUrl(), {
@@ -3263,7 +3276,8 @@ self.addEventListener('fetch', e => {
         lists: state.lists,
         planner: state.planner,
         archive: state.archive || [],
-        _writeId: writeId
+        _writeId: writeId,
+        _updatedAt: now
       })
     }).then(r => {
       if (r.ok) setSyncStatus('synced'); else setSyncStatus('error');
@@ -4391,15 +4405,15 @@ self.addEventListener('fetch', e => {
       const widthPct = colW - 0.5;
       const showNote = b.note && height > 52;
       const singleLine = height < 38;
-      html += `<div class="tt-block-abs" style="top:${top.toFixed(1)}px;height:${height.toFixed(1)}px;left:${leftPct.toFixed(1)}%;width:${widthPct.toFixed(1)}%;background:${b.color};z-index:5"
+      html += `<div class="tt-block-abs${singleLine ? ' tt-single' : ''}" style="top:${top.toFixed(1)}px;height:${height.toFixed(1)}px;left:${leftPct.toFixed(1)}%;width:${widthPct.toFixed(1)}%;background:${b.color};z-index:5"
         onclick="event.stopPropagation();openTTModal(null,'${b.id}')">
         ${singleLine
-          ? `<div class="tt-block-title-line" style="white-space:nowrap">${escapeHtml(b.title)} <span style="opacity:0.8;font-size:10px">${b.start}〜${b.end}</span></div>`
+          ? `<div class="tt-block-title-line" style="white-space:nowrap;padding-right:22px">${escapeHtml(b.title)} <span style="opacity:0.8;font-size:10px">${b.start}〜${b.end}</span></div>`
           : `<div class="tt-block-time-line">${b.start}〜${b.end}</div>
              <div class="tt-block-title-line">${escapeHtml(b.title)}</div>
              ${showNote ? `<div class="tt-block-note-line">${escapeHtml(b.note)}</div>` : ''}`
         }
-        <button class="tt-block-del" onclick="event.stopPropagation();deleteTTBlock('${b.id}')">×</button>
+        <button class="tt-block-del" onclick="event.stopPropagation();deleteTTBlock('${b.id}')" title="削除">🗑</button>
       </div>`;
     });
 
@@ -4673,6 +4687,19 @@ self.addEventListener('fetch', e => {
     save();
     renderTimetable();
     showToast('🗑️ 予定を削除しました');
+  }
+
+  function deleteAllTTBlocks() {
+    const dateStr = state.ttDate;
+    const blocks = (state.planner.schedule || {})[dateStr] || [];
+    if (!blocks.length) { showToast('⚠️ この日に予定がありません', 'error'); return; }
+    const d = new Date(dateStr + 'T00:00:00');
+    const label = d.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' });
+    if (!confirm(`${label} の予定（${blocks.length}件）を全て削除しますか？`)) return;
+    state.planner.schedule[dateStr] = [];
+    save();
+    renderTimetable();
+    showToast(`🗑️ ${blocks.length}件の予定を削除しました`, 'success');
   }
 
   // timetable color picker
