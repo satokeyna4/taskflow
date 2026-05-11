@@ -2276,6 +2276,19 @@
               <span id="daily-todo-stats" style="font-size:11px;color:var(--text-muted)"></span>
             </div>
             <div class="planner-card-body" style="padding-bottom:8px">
+              <!-- 毎日のタスク（繰り返し） -->
+              <div id="recurring-section" style="display:none;margin-bottom:8px">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+                  <span style="font-size:11px;font-weight:700;color:var(--primary)">🔄 毎日のタスク</span>
+                  <div style="display:flex;gap:4px">
+                    <button onclick="copyRecurringTasks()" title="コピー" style="font-size:11px;color:var(--text-muted);background:none;border:1px solid var(--border);border-radius:4px;padding:1px 7px;cursor:pointer">📋</button>
+                    <button onclick="openRecurringModal()" style="font-size:11px;color:var(--primary);background:none;border:1px solid var(--primary);border-radius:4px;padding:1px 7px;cursor:pointer">管理</button>
+                  </div>
+                </div>
+                <div id="recurring-task-list"></div>
+                <div style="border-top:1px solid var(--border);margin-top:8px"></div>
+              </div>
+              <!-- 通常のTODO -->
               <div id="daily-todo-list"></div>
               <div class="planner-quick-add">
                 <input class="planner-quick-input" id="daily-todo-input" type="text"
@@ -2533,6 +2546,31 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('bulk-tt-modal')">キャンセル</button>
       <button class="btn btn-primary" id="bulk-tt-save-btn" onclick="saveBulkTT()">➕ 追加する</button>
+    </div>
+  </div>
+</div>
+
+<!-- RECURRING TASKS MODAL -->
+<div class="modal-overlay" id="recurring-modal">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <h2 class="modal-title">🔄 毎日のタスク管理</h2>
+      <button class="modal-close" onclick="closeModal('recurring-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">毎日自動で表示されるタスクです。チェックは日付ごとにリセットされます。</p>
+      <div id="recurring-manage-list"></div>
+      <div class="planner-quick-add" style="margin-top:10px">
+        <input class="planner-quick-input" id="recurring-add-input" type="text"
+          placeholder="毎日のタスクを追加..."
+          oninput="if(!event.isComposing)void 0" oncompositionend="void 0"
+          onkeydown="if(event.key==='Enter'&&!event.isComposing) addRecurringTask()">
+        <button class="planner-quick-btn" onclick="addRecurringTask()">追加</button>
+      </div>
+    </div>
+    <div class="modal-footer" style="justify-content:space-between">
+      <button class="btn" onclick="copyRecurringTasks()" style="color:var(--primary);border:1px solid var(--primary);background:none">📋 コピー</button>
+      <button class="btn btn-secondary" onclick="closeModal('recurring-modal')">閉じる</button>
     </div>
   </div>
 </div>
@@ -2934,6 +2972,8 @@
       });
       if (!p.dailyTodos || Array.isArray(p.dailyTodos)) p.dailyTodos = {};
       if (!p.reminders || Array.isArray(p.reminders)) p.reminders = {};
+      if (!Array.isArray(p.recurringTasks)) p.recurringTasks = [];
+      if (!p.recurringDone || typeof p.recurringDone !== 'object') p.recurringDone = {};
       state.planner = { ...state.planner, ...p };
     }
     _lastKnownWriteId = data._writeId;
@@ -3026,8 +3066,10 @@
       goals: { monthly: {}, weekly: {}, daily: {} },
       schedule: {},       // keyed by date string
       reflections: {},    // keyed by date string
-      dailyTodos: {},     // keyed by date string
-      reminders: {},      // keyed by date string
+      dailyTodos: {},      // keyed by date string
+      reminders: {},       // keyed by date string
+      recurringTasks: [],  // 毎日のタスク定義
+      recurringDone: {},   // keyed by date string: 完了したタスクIDの配列
     },
     reminderPanelOpen: false,
     currentGoalTab: 'monthly',
@@ -3312,11 +3354,15 @@ self.addEventListener('fetch', e => {
         if (!p.reminders || typeof p.reminders !== 'object' || Array.isArray(p.reminders)) {
           p.reminders = {};
         }
+        if (!Array.isArray(p.recurringTasks)) p.recurringTasks = [];
+        if (!p.recurringDone || typeof p.recurringDone !== 'object') p.recurringDone = {};
         state.planner = { ...state.planner, ...p };
       } catch(e) {
         console.warn('Failed to load planner data, resetting:', e);
       }
     }
+    // 未完了TODOを今日に繰り越し
+    rolloverUndoneTodos();
   }
 
   // ===== UTILS =====
@@ -3902,6 +3948,7 @@ self.addEventListener('fetch', e => {
     renderGoalList();
 
     // daily todo
+    renderRecurringTasks();
     renderDailyTodos();
 
     // reminder
@@ -4064,7 +4111,10 @@ self.addEventListener('fetch', e => {
         <div class="daily-todo-check ${t.done ? 'done' : ''}" onclick="toggleDailyTodo('${dateStr}',${i})">
           ${t.done ? '✓' : ''}
         </div>
-        <span class="daily-todo-text ${t.done ? 'done' : ''}">${escapeHtml(t.text)}</span>
+        <span class="daily-todo-text ${t.done ? 'done' : ''}" style="display:flex;align-items:center;gap:4px;flex:1">
+          ${t.rolledFrom ? `<span style="font-size:10px;color:#d97706;background:#fef3c7;padding:1px 5px;border-radius:3px;flex-shrink:0">繰越</span>` : ''}
+          ${escapeHtml(t.text)}
+        </span>
         <button class="daily-todo-del" onclick="deleteDailyTodo('${dateStr}',${i})">×</button>
       </div>`).join('');
   }
@@ -4103,6 +4153,131 @@ self.addEventListener('fetch', e => {
     todos.splice(i, 1);
     save();
     renderDailyTodos();
+  }
+
+  // ---- ROLLOVER（未完了TODOの繰り越し） ----
+  function rolloverUndoneTodos() {
+    const todayStr = today();
+    if (!state.planner.dailyTodos) state.planner.dailyTodos = {};
+    if (!Array.isArray(state.planner.dailyTodos[todayStr])) {
+      state.planner.dailyTodos[todayStr] = [];
+    }
+    const todayTodos = state.planner.dailyTodos[todayStr];
+    let changed = false;
+    for (let i = 1; i <= 60; i++) {
+      const d = new Date(todayStr + 'T00:00:00');
+      d.setDate(d.getDate() - i);
+      const prevDate = localDateStr(d);
+      const prevTodos = state.planner.dailyTodos[prevDate];
+      if (!prevTodos || !prevTodos.length) continue;
+      prevTodos.forEach(todo => {
+        if (!todo.done && !todo.rolledOver) {
+          todayTodos.push({ id: genId(), text: todo.text, done: false, rolledFrom: prevDate });
+          todo.rolledOver = true;
+          changed = true;
+        }
+      });
+    }
+    if (changed) save();
+  }
+
+  // ---- 毎日のタスク（RECURRING TASKS） ----
+  function getRecurringTasks() {
+    if (!Array.isArray(state.planner.recurringTasks)) state.planner.recurringTasks = [];
+    return state.planner.recurringTasks;
+  }
+
+  function getRecurringDone(dateStr) {
+    if (!state.planner.recurringDone || typeof state.planner.recurringDone !== 'object') {
+      state.planner.recurringDone = {};
+    }
+    if (!Array.isArray(state.planner.recurringDone[dateStr])) {
+      state.planner.recurringDone[dateStr] = [];
+    }
+    return state.planner.recurringDone[dateStr];
+  }
+
+  function renderRecurringTasks() {
+    const tasks = getRecurringTasks();
+    const dateStr = state.ttDate || today();
+    const doneIds = getRecurringDone(dateStr);
+    const section = document.getElementById('recurring-section');
+    const container = document.getElementById('recurring-task-list');
+    if (!section || !container) return;
+    if (!tasks.length) { section.style.display = 'none'; return; }
+    section.style.display = 'block';
+    container.innerHTML = tasks.map(t => {
+      const done = doneIds.includes(t.id);
+      return `<div class="daily-todo-item">
+        <div class="daily-todo-check ${done ? 'done' : ''}" onclick="toggleRecurringDone('${dateStr}','${t.id}')">
+          ${done ? '✓' : ''}
+        </div>
+        <span class="daily-todo-text ${done ? 'done' : ''}" style="display:flex;align-items:center;gap:4px;flex:1">
+          <span style="font-size:10px;color:var(--primary);background:var(--primary-light);padding:1px 5px;border-radius:3px;flex-shrink:0">🔄</span>
+          ${escapeHtml(t.text)}
+        </span>
+      </div>`;
+    }).join('');
+  }
+
+  function toggleRecurringDone(dateStr, id) {
+    const doneIds = getRecurringDone(dateStr);
+    const idx = doneIds.indexOf(id);
+    if (idx === -1) doneIds.push(id);
+    else doneIds.splice(idx, 1);
+    save();
+    renderRecurringTasks();
+  }
+
+  function renderRecurringManageList() {
+    const tasks = getRecurringTasks();
+    const container = document.getElementById('recurring-manage-list');
+    if (!container) return;
+    if (!tasks.length) {
+      container.innerHTML = '<div style="text-align:center;padding:12px;color:var(--text-muted);font-size:13px">まだ毎日のタスクがありません</div>';
+      return;
+    }
+    container.innerHTML = tasks.map((t, i) => `
+      <div class="daily-todo-item">
+        <span style="font-size:12px;color:var(--text-muted);width:18px;text-align:center;flex-shrink:0">${i + 1}</span>
+        <span class="daily-todo-text">${escapeHtml(t.text)}</span>
+        <button class="daily-todo-del" style="opacity:1" onclick="deleteRecurringTask('${t.id}')">×</button>
+      </div>`).join('');
+  }
+
+  function openRecurringModal() {
+    renderRecurringManageList();
+    openModal('recurring-modal');
+  }
+
+  function addRecurringTask() {
+    const input = document.getElementById('recurring-add-input');
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text) { input.focus(); return; }
+    getRecurringTasks().push({ id: genId(), text });
+    input.value = '';
+    save();
+    renderRecurringTasks();
+    renderRecurringManageList();
+    showToast('🔄 毎日のタスクを追加しました', 'success');
+  }
+
+  function deleteRecurringTask(id) {
+    state.planner.recurringTasks = getRecurringTasks().filter(t => t.id !== id);
+    save();
+    renderRecurringTasks();
+    renderRecurringManageList();
+    showToast('🗑️ 毎日のタスクを削除しました');
+  }
+
+  function copyRecurringTasks() {
+    const tasks = getRecurringTasks();
+    if (!tasks.length) { showToast('⚠️ 毎日のタスクがありません', 'error'); return; }
+    const text = tasks.map(t => t.text).join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('📋 毎日のタスクをコピーしました', 'success');
+    }).catch(() => prompt('コピーしてください：', text));
   }
 
   // ---- REMINDERS ----
@@ -4240,6 +4415,7 @@ self.addEventListener('fetch', e => {
     d.setDate(d.getDate() + delta);
     state.ttDate = localDateStr(d);
     renderTimetable();
+    renderRecurringTasks();
     renderDailyTodos();
     renderReminderList();
     renderReflection();
@@ -4248,6 +4424,7 @@ self.addEventListener('fetch', e => {
   function ttGoToday() {
     state.ttDate = today();
     renderTimetable();
+    renderRecurringTasks();
     renderDailyTodos();
     renderReminderList();
     renderReflection();
@@ -4257,6 +4434,7 @@ self.addEventListener('fetch', e => {
     if (!dateStr) return;
     state.ttDate = dateStr;
     renderTimetable();
+    renderRecurringTasks();
     renderDailyTodos();
     renderReminderList();
     renderReflection();
