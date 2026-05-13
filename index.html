@@ -2084,6 +2084,8 @@
     }
   </style>
   <!-- Firebase: SDKなし・REST APIで直接通信 -->
+  <!-- Google Identity Services (Google Calendar連携) -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -2350,6 +2352,7 @@
               </div>
               <div style="display:flex;align-items:center;gap:6px">
                 <button class="tt-nav-btn" style="padding:0 10px;width:auto;font-size:12px" onclick="ttGoToday()">今日</button>
+                <button class="tt-nav-btn" id="gcal-sync-btn" onclick="gcalSync()" title="Googleカレンダーと同期" style="padding:0 8px;width:auto;font-size:11px;color:#4285f4;border-color:#4285f4;display:none">🗓️ GCal</button>
                 <button class="tt-nav-btn" onclick="copyTimetableAsText()" title="予定をテキストとしてコピー" style="padding:0 8px;width:auto;font-size:11px;color:#10b981;border-color:#10b981">📤 コピー</button>
                 <button class="tt-nav-btn" onclick="openBulkTTModal()" title="テキストで一括入力" style="padding:0 8px;width:auto;font-size:11px;color:var(--primary);border-color:var(--primary)">📋 貼付</button>
                 <button class="tt-nav-btn" onclick="deleteAllTTBlocks()" title="この日の予定を全削除" style="padding:0 8px;width:auto;font-size:11px;color:#ef4444;border-color:#ef4444">🗑️ 全削除</button>
@@ -2759,6 +2762,27 @@
     </div>
   </button>
   <p style="font-size:12px;color:var(--text-muted);margin-top:8px">公開後はURLをブックマークすれば、スマホ・PCどこからでもアクセスできます。データの同期はエクスポート→インポートで行えます。</p>
+  <hr class="data-divider">
+  <h3>🗓️ Googleカレンダー連携</h3>
+  <p style="margin-bottom:8px">手帳の予定をGoogleカレンダーと双方向同期します</p>
+  <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:12px;margin-bottom:10px">
+    <div style="font-size:12px;font-weight:600;color:#16a34a;margin-bottom:6px">🔑 クライアントID設定</div>
+    <input id="gcal-client-id-input" type="text" placeholder="Google Cloud ConsoleのクライアントIDを貼り付け"
+      style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;box-sizing:border-box;font-family:monospace;margin-bottom:6px"
+      oninput="localStorage.setItem('gcal_client_id', this.value); _gcalClientId = this.value;">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <span id="gcal-status" style="font-size:12px;color:var(--text-muted)">未連携</span>
+      <button id="gcal-connect-btn" onclick="gcalSignIn()"
+        style="font-size:12px;color:var(--primary);background:none;border:1px solid var(--primary);border-radius:6px;padding:4px 12px;cursor:pointer">連携する</button>
+    </div>
+  </div>
+  <button class="data-btn" onclick="gcalSync()" style="border-color:#4285f4">
+    <span>🔄</span>
+    <div>
+      <div style="color:#4285f4">今日の予定を同期</div>
+      <div style="font-size:11px;font-weight:400;color:var(--text-muted)">Googleカレンダーと双方向同期</div>
+    </div>
+  </button>
   <hr class="data-divider">
   <button class="data-btn" onclick="clearAllData()" style="border-color:#ef4444;color:#ef4444">
     <span>🗑️</span>
@@ -4691,11 +4715,22 @@ self.addEventListener('fetch', e => {
     if (editId) {
       const idx = state.planner.schedule[dateStr].findIndex(b => b.id === editId);
       if (idx !== -1) {
-        state.planner.schedule[dateStr][idx] = { ...state.planner.schedule[dateStr][idx], title, start, end, note, color: state.selectedTTColor };
+        const updated = { ...state.planner.schedule[dateStr][idx], title, start, end, note, color: state.selectedTTColor };
+        state.planner.schedule[dateStr][idx] = updated;
+        // Google Calendar 更新
+        if (gcalIsAuthenticated()) gcalUpdateEvent(dateStr, updated);
         showToast('✏️ 予定を更新しました');
       }
     } else {
-      state.planner.schedule[dateStr].push({ id: genId(), title, start, end, note, color: state.selectedTTColor });
+      const newBlock = { id: genId(), title, start, end, note, color: state.selectedTTColor };
+      state.planner.schedule[dateStr].push(newBlock);
+      // Google Calendar に追加
+      if (gcalIsAuthenticated()) {
+        gcalCreateEvent(dateStr, newBlock).then(ev => {
+          newBlock.gcalId = ev.id;
+          save();
+        }).catch(e => console.warn('GCal create failed:', e));
+      }
       showToast('📅 予定を追加しました', 'success');
     }
 
@@ -4873,7 +4908,10 @@ self.addEventListener('fetch', e => {
   function deleteTTBlock(id) {
     const dateStr = state.ttDate;
     if (!state.planner.schedule || !state.planner.schedule[dateStr]) return;
+    const block = state.planner.schedule[dateStr].find(b => b.id === id);
     state.planner.schedule[dateStr] = state.planner.schedule[dateStr].filter(b => b.id !== id);
+    // Google Calendar からも削除
+    if (block && block.gcalId && gcalIsAuthenticated()) gcalDeleteEvent(block.gcalId);
     save();
     renderTimetable();
     showToast('🗑️ 予定を削除しました');
@@ -4890,6 +4928,188 @@ self.addEventListener('fetch', e => {
     save();
     renderTimetable();
     showToast(`🗑️ ${blocks.length}件の予定を削除しました`, 'success');
+  }
+
+  // ===== GOOGLE CALENDAR 連携 =====
+  let _gcalClientId = localStorage.getItem('gcal_client_id') || '';
+  let _gcalToken = localStorage.getItem('gcal_token') || null;
+  let _gcalTokenExpiry = parseInt(localStorage.getItem('gcal_token_expiry') || '0');
+  let _gcalSyncing = false;
+
+  function gcalIsAuthenticated() {
+    return !!_gcalToken && Date.now() < _gcalTokenExpiry;
+  }
+
+  function gcalSignIn() {
+    if (!_gcalClientId) {
+      showToast('⚠️ クライアントIDを設定してください（⚙️ → Googleカレンダー連携）', 'error');
+      return;
+    }
+    if (typeof google === 'undefined' || !google.accounts) {
+      showToast('⚠️ Googleライブラリの読み込み中です。少し待ってから再試行してください', 'error');
+      return;
+    }
+    const tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: _gcalClientId,
+      scope: 'https://www.googleapis.com/auth/calendar.events',
+      callback: (response) => {
+        if (response.error) { showToast('Google認証エラー: ' + response.error, 'error'); return; }
+        _gcalToken = response.access_token;
+        _gcalTokenExpiry = Date.now() + (parseInt(response.expires_in) - 60) * 1000;
+        localStorage.setItem('gcal_token', _gcalToken);
+        localStorage.setItem('gcal_token_expiry', String(_gcalTokenExpiry));
+        updateGcalUI();
+        showToast('✅ Googleカレンダーと連携しました', 'success');
+        gcalSync();
+      }
+    });
+    tokenClient.requestAccessToken({ prompt: _gcalToken ? '' : 'consent' });
+  }
+
+  function gcalSignOut() {
+    if (_gcalToken && typeof google !== 'undefined') {
+      google.accounts.oauth2.revoke(_gcalToken, () => {});
+    }
+    _gcalToken = null;
+    _gcalTokenExpiry = 0;
+    localStorage.removeItem('gcal_token');
+    localStorage.removeItem('gcal_token_expiry');
+    updateGcalUI();
+    showToast('Googleカレンダーの連携を解除しました');
+  }
+
+  async function gcalSync() {
+    if (!gcalIsAuthenticated()) { gcalSignIn(); return; }
+    if (_gcalSyncing) return;
+    _gcalSyncing = true;
+    const btn = document.getElementById('gcal-sync-btn');
+    if (btn) btn.textContent = '🔄 同期中…';
+    try {
+      const dateStr = state.ttDate;
+      const timeMin = encodeURIComponent(dateStr + 'T00:00:00+09:00');
+      const timeMax = encodeURIComponent(dateStr + 'T23:59:59+09:00');
+      const res = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime`,
+        { headers: { Authorization: `Bearer ${_gcalToken}` } }
+      );
+      if (res.status === 401) { gcalSignOut(); gcalSignIn(); return; }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const gcalEvents = data.items || [];
+
+      if (!state.planner.schedule) state.planner.schedule = {};
+      if (!state.planner.schedule[dateStr]) state.planner.schedule[dateStr] = [];
+      const blocks = state.planner.schedule[dateStr];
+
+      // Google → TaskFlow（新規イベントを取り込み）
+      const existingGcalIds = new Set(blocks.filter(b => b.gcalId).map(b => b.gcalId));
+      let added = 0;
+      gcalEvents.forEach(ev => {
+        if (!ev.start || !ev.start.dateTime) return; // 終日イベントはスキップ
+        if (existingGcalIds.has(ev.id)) {
+          // 既存ブロックのタイトル・時間をGCal側に合わせて更新
+          const block = blocks.find(b => b.gcalId === ev.id);
+          if (block) {
+            block.title = ev.summary || block.title;
+            block.start = ev.start.dateTime.slice(11, 16);
+            block.end = ev.end.dateTime.slice(11, 16);
+          }
+          return;
+        }
+        blocks.push({
+          id: genId(),
+          title: ev.summary || '（タイトルなし）',
+          start: ev.start.dateTime.slice(11, 16),
+          end: ev.end.dateTime.slice(11, 16),
+          note: ev.description || '',
+          color: '#4285f4',
+          gcalId: ev.id,
+          fromGcal: true
+        });
+        existingGcalIds.add(ev.id);
+        added++;
+      });
+
+      // TaskFlow → Google（未同期ブロックを送信）
+      let pushed = 0;
+      for (const block of blocks) {
+        if (block.gcalId) continue;
+        try {
+          const ev = await gcalCreateEvent(dateStr, block);
+          block.gcalId = ev.id;
+          pushed++;
+        } catch(e) { console.warn('GCal push failed:', e); }
+      }
+
+      save();
+      renderTimetable();
+      const msgs = [];
+      if (added) msgs.push(`📥 ${added}件取り込み`);
+      if (pushed) msgs.push(`📤 ${pushed}件送信`);
+      showToast(msgs.length ? `🗓️ ${msgs.join('、')}` : '🗓️ 同期完了（変更なし）', 'success');
+    } catch(e) {
+      console.error('GCal sync error:', e);
+      showToast('⚠️ 同期エラー: ' + (e.message || e), 'error');
+    } finally {
+      _gcalSyncing = false;
+      if (btn) btn.textContent = '🗓️ GCal';
+    }
+  }
+
+  async function gcalCreateEvent(dateStr, block) {
+    const body = {
+      summary: block.title,
+      start: { dateTime: `${dateStr}T${block.start}:00+09:00`, timeZone: 'Asia/Tokyo' },
+      end:   { dateTime: `${dateStr}T${block.end}:00+09:00`,   timeZone: 'Asia/Tokyo' },
+      description: block.note || ''
+    };
+    const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${_gcalToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  }
+
+  async function gcalUpdateEvent(dateStr, block) {
+    if (!block.gcalId || !gcalIsAuthenticated()) return;
+    const body = {
+      summary: block.title,
+      start: { dateTime: `${dateStr}T${block.start}:00+09:00`, timeZone: 'Asia/Tokyo' },
+      end:   { dateTime: `${dateStr}T${block.end}:00+09:00`,   timeZone: 'Asia/Tokyo' },
+      description: block.note || ''
+    };
+    await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${block.gcalId}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${_gcalToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).catch(e => console.warn('GCal update failed:', e));
+  }
+
+  async function gcalDeleteEvent(gcalId) {
+    if (!gcalId || !gcalIsAuthenticated()) return;
+    await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${gcalId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${_gcalToken}` }
+    }).catch(e => console.warn('GCal delete failed:', e));
+  }
+
+  function updateGcalUI() {
+    const btn = document.getElementById('gcal-connect-btn');
+    const statusEl = document.getElementById('gcal-status');
+    const syncBtn = document.getElementById('gcal-sync-btn');
+    const clientInput = document.getElementById('gcal-client-id-input');
+    if (clientInput && _gcalClientId) clientInput.value = _gcalClientId;
+    if (gcalIsAuthenticated()) {
+      if (btn) { btn.textContent = '連携解除'; btn.onclick = gcalSignOut; btn.style.color = '#ef4444'; btn.style.borderColor = '#ef4444'; }
+      if (statusEl) statusEl.textContent = '✅ 連携中';
+      if (syncBtn) syncBtn.style.display = 'inline-flex';
+    } else {
+      if (btn) { btn.textContent = '連携する'; btn.onclick = gcalSignIn; btn.style.color = 'var(--primary)'; btn.style.borderColor = 'var(--primary)'; }
+      if (statusEl) statusEl.textContent = '未連携';
+      if (syncBtn) syncBtn.style.display = 'none';
+    }
   }
 
   // timetable color picker
@@ -5535,6 +5755,9 @@ self.addEventListener('fetch', e => {
 
     // Firebase リアルタイムリスナー
     _attachFbListener();
+
+    // Google Calendar UI 初期化
+    updateGcalUI();
 
     // 旧パス(taskflow/data)からの一回限りのデータ移行
     const _oldUrl = `${_FB_BASE}/taskflow/data.json`;
