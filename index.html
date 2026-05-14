@@ -2277,15 +2277,15 @@
               <div class="planner-card-title">📝 今日のTODO <span id="daily-todo-date" style="font-size:11px;font-weight:400;color:var(--text-muted)"></span></div>
               <div style="display:flex;align-items:center;gap:6px">
                 <span id="daily-todo-stats" style="font-size:11px;color:var(--text-muted)"></span>
-                <button onclick="copyDailyTodos()" title="TODOをコピー" style="font-size:11px;color:#10b981;background:none;border:1px solid #10b981;border-radius:4px;padding:1px 7px;cursor:pointer">📋 コピー</button>
-                <button onclick="addAllTodosToRecurring()" title="全TODOを毎日のタスクに追加" style="font-size:11px;color:var(--primary);background:none;border:1px solid var(--primary);border-radius:4px;padding:1px 7px;cursor:pointer">🔄 毎日に追加</button>
+                <button id="todo-select-copy-btn" onclick="toggleTodoSelectMode()" title="選択してコピー" style="font-size:11px;color:#10b981;background:none;border:1px solid #10b981;border-radius:4px;padding:1px 7px;cursor:pointer">📋 選択</button>
+                <button onclick="addAllTodosToRecurring()" title="全TODOを繰り返しタスクに追加（毎日）" style="font-size:11px;color:var(--primary);background:none;border:1px solid var(--primary);border-radius:4px;padding:1px 7px;cursor:pointer">🔄 繰返に追加</button>
               </div>
             </div>
             <div class="planner-card-body" style="padding-bottom:8px">
               <!-- 毎日のタスク（繰り返し） -->
               <div id="recurring-section" style="display:none;margin-bottom:8px">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-                  <span style="font-size:11px;font-weight:700;color:var(--primary)">🔄 毎日のタスク</span>
+                  <span style="font-size:11px;font-weight:700;color:var(--primary)">🔄 繰り返しタスク</span>
                   <div style="display:flex;gap:4px">
                     <button onclick="copyRecurringTasks()" title="コピー" style="font-size:11px;color:var(--text-muted);background:none;border:1px solid var(--border);border-radius:4px;padding:1px 7px;cursor:pointer">📋</button>
                     <button onclick="openRecurringModal()" style="font-size:11px;color:var(--primary);background:none;border:1px solid var(--primary);border-radius:4px;padding:1px 7px;cursor:pointer">管理</button>
@@ -2298,8 +2298,9 @@
               <div id="daily-todo-list"></div>
               <div class="planner-quick-add">
                 <input class="planner-quick-input" id="daily-todo-input" type="text"
-                  placeholder="TODOを追加... (Enterで確定)"
-                  onkeydown="if(event.key==='Enter') addDailyTodo()">
+                  placeholder="TODOを追加... (Enterで確定 / 複数行ペースト対応)"
+                  onkeydown="if(event.key==='Enter'&&!event.isComposing) addDailyTodo()"
+                  onpaste="handleTodoPaste(event)">
                 <button class="planner-quick-btn" onclick="addDailyTodo()">追加</button>
               </div>
             </div>
@@ -2357,7 +2358,7 @@
               <div style="display:flex;align-items:center;gap:6px">
                 <button class="tt-nav-btn" style="padding:0 10px;width:auto;font-size:12px" onclick="ttGoToday()">今日</button>
                 <button class="tt-nav-btn" id="gcal-sync-btn" onclick="gcalSync()" title="Googleカレンダーと同期" style="padding:0 8px;width:auto;font-size:11px;color:#4285f4;border-color:#4285f4;display:none">🗓️ GCal</button>
-                <button class="tt-nav-btn" onclick="copyTimetableAsText()" title="予定をテキストとしてコピー" style="padding:0 8px;width:auto;font-size:11px;color:#10b981;border-color:#10b981">📤 コピー</button>
+                <button class="tt-nav-btn" id="tt-select-copy-btn" onclick="toggleTTSelectMode()" title="選択してコピー" style="padding:0 8px;width:auto;font-size:11px;color:#10b981;border-color:#10b981">📋 選択</button>
                 <button class="tt-nav-btn" onclick="openBulkTTModal()" title="テキストで一括入力" style="padding:0 8px;width:auto;font-size:11px;color:var(--primary);border-color:var(--primary)">📋 貼付</button>
                 <button class="tt-nav-btn" onclick="deleteAllTTBlocks()" title="この日の予定を全削除" style="padding:0 8px;width:auto;font-size:11px;color:#ef4444;border-color:#ef4444">🗑️ 全削除</button>
                 <button class="tt-nav-btn" onclick="openTTModal()" title="予定を追加" style="background:var(--primary);color:white;border-color:var(--primary);width:28px">＋</button>
@@ -2507,6 +2508,14 @@
         <label class="form-label">メモ（任意）</label>
         <input class="form-input" type="text" id="tt-note-input" placeholder="詳細や場所など">
       </div>
+      <div class="form-group">
+        <label class="form-label">🔁 繰り返し</label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="tt-repeat" value="none" checked> なし</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="tt-repeat" value="daily"> 毎日</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="tt-repeat" value="weekly"> 毎週</label>
+        </div>
+      </div>
     </div>
     <div class="modal-footer" style="justify-content:space-between">
       <button class="btn" id="tt-delete-btn" onclick="deleteTTFromModal()" style="background:#fee2e2;color:#ef4444;border:1px solid #fca5a5;display:none">🗑️ 削除</button>
@@ -2559,20 +2568,54 @@
 
 <!-- RECURRING TASKS MODAL -->
 <div class="modal-overlay" id="recurring-modal">
-  <div class="modal" style="max-width:400px">
+  <div class="modal" style="max-width:420px">
     <div class="modal-header">
-      <h2 class="modal-title">🔄 毎日のタスク管理</h2>
+      <h2 class="modal-title">🔄 繰り返しタスク管理</h2>
       <button class="modal-close" onclick="closeModal('recurring-modal')">×</button>
     </div>
-    <div class="modal-body">
-      <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">毎日自動で表示されるタスクです。チェックは日付ごとにリセットされます。</p>
+    <div class="modal-body" style="padding-bottom:4px">
       <div id="recurring-manage-list"></div>
-      <div class="planner-quick-add" style="margin-top:10px">
+      <!-- 追加フォーム -->
+      <div id="recurring-add-form" style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px">
+        <div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:6px">＋ 新しい繰り返しタスク</div>
         <input class="planner-quick-input" id="recurring-add-input" type="text"
-          placeholder="毎日のタスクを追加..."
+          placeholder="タスク名を入力..."
+          style="margin-bottom:8px;width:100%;box-sizing:border-box"
           oninput="if(!event.isComposing)void 0" oncompositionend="void 0"
           onkeydown="if(event.key==='Enter'&&!event.isComposing) addRecurringTask()">
-        <button class="planner-quick-btn" onclick="addRecurringTask()">追加</button>
+        <!-- 繰り返し種別 -->
+        <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary)">
+            <input type="radio" name="recurring-repeat" value="daily" checked onchange="updateRecurringForm()"> 毎日
+          </label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary)">
+            <input type="radio" name="recurring-repeat" value="weekly" onchange="updateRecurringForm()"> 毎週
+          </label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary)">
+            <input type="radio" name="recurring-repeat" value="interval" onchange="updateRecurringForm()"> N日ごと
+          </label>
+        </div>
+        <!-- 曜日選択（毎週のとき表示） -->
+        <div id="recurring-days-picker" style="display:none;margin-bottom:8px">
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">曜日を選択（複数可）</div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap">
+            ${['日','月','火','水','木','金','土'].map((d,i)=>`
+            <label style="display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer">
+              <input type="checkbox" class="recurring-day-cb" value="${i}" style="cursor:pointer">
+              <span style="font-size:12px;width:24px;text-align:center;padding:2px 0;border-radius:4px;border:1px solid var(--border);${i===0||i===6?'color:#ef4444':'color:var(--text)'}">${d}</span>
+            </label>`).join('')}
+          </div>
+        </div>
+        <!-- N日ごと設定 -->
+        <div id="recurring-interval-picker" style="display:none;margin-bottom:8px">
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">何日ごとに表示するか</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="number" id="recurring-interval-input" min="2" max="90" value="2"
+              style="width:60px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px">
+            <span style="font-size:13px;color:var(--text-muted)">日ごと（今日を基準）</span>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="addRecurringTask()" style="width:100%">追加</button>
       </div>
     </div>
     <div class="modal-footer" style="justify-content:space-between">
@@ -3002,6 +3045,8 @@
       if (!p.reminders || Array.isArray(p.reminders)) p.reminders = {};
       if (!Array.isArray(p.recurringTasks)) p.recurringTasks = [];
       if (!p.recurringDone || typeof p.recurringDone !== 'object') p.recurringDone = {};
+      if (!Array.isArray(p.repeatTemplates)) p.repeatTemplates = [];
+      if (!p.repeatExceptions || typeof p.repeatExceptions !== 'object') p.repeatExceptions = {};
       state.planner = { ...state.planner, ...p };
     }
     _lastKnownWriteId = data._writeId;
@@ -3094,10 +3139,12 @@
       goals: { monthly: {}, weekly: {}, daily: {} },
       schedule: {},       // keyed by date string
       reflections: {},    // keyed by date string
-      dailyTodos: {},      // keyed by date string
-      reminders: {},       // keyed by date string
-      recurringTasks: [],  // 毎日のタスク定義
-      recurringDone: {},   // keyed by date string: 完了したタスクIDの配列
+      dailyTodos: {},       // keyed by date string
+      reminders: {},        // keyed by date string
+      recurringTasks: [],   // 毎日のタスク定義
+      recurringDone: {},    // keyed by date string: 完了したタスクIDの配列
+      repeatTemplates: [],  // リピート予定テンプレート
+      repeatExceptions: {}, // {'templateId_YYYY-MM-DD': true} この日だけキャンセル
     },
     reminderPanelOpen: false,
     currentGoalTab: 'monthly',
@@ -4120,6 +4167,9 @@ self.addEventListener('fetch', e => {
     return state.planner.dailyTodos[d];
   }
 
+  let _todoSelectMode = false;
+  let _todoSelected = new Set();
+
   function renderDailyTodos() {
     const dateStr = state.ttDate || today();
     const todos = getDailyTodos(dateStr);
@@ -4131,13 +4181,43 @@ self.addEventListener('fetch', e => {
     document.getElementById('daily-todo-stats').textContent =
       total ? `${done}/${total} 完了` : '';
 
+    // 選択モードのボタン表示更新
+    const selBtn = document.getElementById('todo-select-copy-btn');
+    if (selBtn) {
+      if (_todoSelectMode) {
+        selBtn.textContent = `📋 コピー(${_todoSelected.size})`;
+        selBtn.style.background = '#10b981';
+        selBtn.style.color = 'white';
+      } else {
+        selBtn.textContent = '📋 選択';
+        selBtn.style.background = 'none';
+        selBtn.style.color = '#10b981';
+      }
+    }
+
     const container = document.getElementById('daily-todo-list');
     if (!todos.length) {
       container.innerHTML = `<div style="text-align:center;padding:10px 0;color:var(--text-muted);font-size:13px">TODOを追加しましょう ✏️</div>`;
       return;
     }
+
     container.innerHTML = todos.map((t, i) => {
       const isRecurring = getRecurringTasks().some(r => r.text === t.text);
+      const isSelected = _todoSelected.has(i);
+      if (_todoSelectMode) {
+        // 選択モード：チェックボックスを表示
+        return `
+        <div class="daily-todo-item" style="gap:6px;cursor:pointer;background:${isSelected ? 'var(--primary-light)' : 'transparent'};border-radius:6px;margin:1px 0;padding:4px 6px"
+          onclick="toggleTodoSelect(${i})">
+          <div style="width:18px;height:18px;border-radius:4px;border:2px solid ${isSelected ? 'var(--primary)' : 'var(--border)'};background:${isSelected ? 'var(--primary)' : 'white'};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;color:white">
+            ${isSelected ? '✓' : ''}
+          </div>
+          <span class="daily-todo-text ${t.done ? 'done' : ''}" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            ${t.rolledFrom ? `<span style="font-size:10px;color:#d97706;background:#fef3c7;padding:1px 5px;border-radius:3px">繰越</span> ` : ''}${escapeHtml(t.text)}
+          </span>
+        </div>`;
+      }
+      // 通常モード
       return `
       <div class="daily-todo-item" style="gap:4px">
         <div class="daily-todo-check ${t.done ? 'done' : ''}" onclick="toggleDailyTodo('${dateStr}',${i})">
@@ -4191,7 +4271,56 @@ self.addEventListener('fetch', e => {
     renderDailyTodos();
   }
 
-  // 今日のTODOをクリップボードにコピー
+  // 複数行ペースト → 1行ずつ個別TODOに追加
+  function handleTodoPaste(event) {
+    const text = (event.clipboardData || window.clipboardData).getData('text');
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (lines.length <= 1) return; // 1行なら普通のペーストに任せる
+    event.preventDefault();
+    const dateStr = state.ttDate || today();
+    if (!state.planner.dailyTodos) state.planner.dailyTodos = {};
+    if (!Array.isArray(state.planner.dailyTodos[dateStr])) state.planner.dailyTodos[dateStr] = [];
+    lines.forEach(line => {
+      state.planner.dailyTodos[dateStr].push({ id: genId(), text: line, done: false });
+    });
+    document.getElementById('daily-todo-input').value = '';
+    save();
+    renderDailyTodos();
+    showToast(`📋 ${lines.length}件のTODOを追加しました`, 'success');
+  }
+
+  // 選択モードの切替
+  function toggleTodoSelectMode() {
+    if (_todoSelectMode && _todoSelected.size > 0) {
+      // 選択中 → コピーして解除
+      const dateStr = state.ttDate || today();
+      const todos = getDailyTodos(dateStr);
+      const lines = [..._todoSelected].sort().map(i => todos[i] ? (todos[i].done ? '✅ ' : '☐ ') + todos[i].text : '').filter(Boolean);
+      navigator.clipboard.writeText(lines.join('\n')).then(() => {
+        showToast(`📋 ${lines.length}件をコピーしました`, 'success');
+      }).catch(() => prompt('コピーしてください：', lines.join('\n')));
+      _todoSelectMode = false;
+      _todoSelected.clear();
+    } else if (_todoSelectMode) {
+      // 選択なし → キャンセル
+      _todoSelectMode = false;
+      _todoSelected.clear();
+    } else {
+      // 通常 → 選択モードに入る
+      _todoSelectMode = true;
+      _todoSelected.clear();
+    }
+    renderDailyTodos();
+  }
+
+  // 個別TODOの選択切替
+  function toggleTodoSelect(i) {
+    if (_todoSelected.has(i)) _todoSelected.delete(i);
+    else _todoSelected.add(i);
+    renderDailyTodos();
+  }
+
+  // 今日のTODOをクリップボードにコピー（全件）
   function copyDailyTodos() {
     const dateStr = state.ttDate || today();
     const todos = getDailyTodos(dateStr);
@@ -4202,7 +4331,7 @@ self.addEventListener('fetch', e => {
     }).catch(() => prompt('コピーしてください：', text));
   }
 
-  // 個別TODOを毎日のタスクに追加／解除
+  // 個別TODOを繰り返しタスクに追加／解除（デフォルト毎日）
   function toggleTodoToRecurring(i, dateStr) {
     const todos = getDailyTodos(dateStr || state.ttDate || today());
     const todo = todos[i];
@@ -4211,10 +4340,10 @@ self.addEventListener('fetch', e => {
     const exists = recurring.findIndex(r => r.text === todo.text);
     if (exists !== -1) {
       recurring.splice(exists, 1);
-      showToast('🔄 毎日のタスクから解除しました');
+      showToast('🔄 繰り返しタスクから解除しました');
     } else {
-      recurring.push({ id: genId(), text: todo.text });
-      showToast('🔄 毎日のタスクに追加しました', 'success');
+      recurring.push({ id: genId(), text: todo.text, repeat: 'daily' });
+      showToast('🔄 毎日のタスクに追加しました（管理から変更可）', 'success');
     }
     save();
     renderDailyTodos();
@@ -4231,12 +4360,12 @@ self.addEventListener('fetch', e => {
     let added = 0;
     todos.forEach(t => {
       if (!existingTexts.has(t.text)) {
-        recurring.push({ id: genId(), text: t.text });
+        recurring.push({ id: genId(), text: t.text, repeat: 'daily' });
         existingTexts.add(t.text);
         added++;
       }
     });
-    if (!added) { showToast('⚠️ すでにすべて毎日のタスクに登録されています'); return; }
+    if (!added) { showToast('⚠️ すでにすべて繰り返しタスクに登録されています'); return; }
     save();
     renderDailyTodos();
     renderRecurringTasks();
@@ -4269,7 +4398,9 @@ self.addEventListener('fetch', e => {
     if (changed) save();
   }
 
-  // ---- 毎日のタスク（RECURRING TASKS） ----
+  // ---- 繰り返しタスク（RECURRING TASKS） ----
+  // データモデル: { id, text, repeat:'daily'|'weekly'|'interval', days:[0-6], interval:N, startDate:'YYYY-MM-DD' }
+
   function getRecurringTasks() {
     if (!Array.isArray(state.planner.recurringTasks)) state.planner.recurringTasks = [];
     return state.planner.recurringTasks;
@@ -4285,9 +4416,45 @@ self.addEventListener('fetch', e => {
     return state.planner.recurringDone[dateStr];
   }
 
+  // 指定日にこのタスクを表示するか判定
+  function shouldShowRecurring(task, dateStr) {
+    const repeat = task.repeat || 'daily';
+    if (repeat === 'daily') return true;
+    if (repeat === 'weekly') {
+      const dow = new Date(dateStr + 'T00:00:00').getDay();
+      return Array.isArray(task.days) && task.days.includes(dow);
+    }
+    if (repeat === 'interval') {
+      const base = task.startDate || today();
+      const msPerDay = 86400000;
+      const d1 = new Date(base + 'T00:00:00').getTime();
+      const d2 = new Date(dateStr + 'T00:00:00').getTime();
+      const diff = Math.round((d2 - d1) / msPerDay);
+      if (diff < 0) return false;
+      return diff % Math.max(1, task.interval || 2) === 0;
+    }
+    return true;
+  }
+
+  // 繰り返し種別のバッジテキストを生成
+  function recurringBadge(task) {
+    const repeat = task.repeat || 'daily';
+    if (repeat === 'daily') return { label: '毎日', color: 'var(--primary)', bg: 'var(--primary-light)' };
+    if (repeat === 'weekly') {
+      const dayNames = ['日','月','火','水','木','金','土'];
+      const labels = (task.days || []).sort().map(d => dayNames[d]).join('');
+      return { label: labels + '曜', color: '#059669', bg: '#d1fae5' };
+    }
+    if (repeat === 'interval') {
+      return { label: `${task.interval || 2}日ごと`, color: '#7c3aed', bg: '#ede9fe' };
+    }
+    return { label: '🔄', color: 'var(--primary)', bg: 'var(--primary-light)' };
+  }
+
   function renderRecurringTasks() {
-    const tasks = getRecurringTasks();
+    const allTasks = getRecurringTasks();
     const dateStr = state.ttDate || today();
+    const tasks = allTasks.filter(t => shouldShowRecurring(t, dateStr));
     const doneIds = getRecurringDone(dateStr);
     const section = document.getElementById('recurring-section');
     const container = document.getElementById('recurring-task-list');
@@ -4296,13 +4463,14 @@ self.addEventListener('fetch', e => {
     section.style.display = 'block';
     container.innerHTML = tasks.map(t => {
       const done = doneIds.includes(t.id);
+      const badge = recurringBadge(t);
       return `<div class="daily-todo-item">
         <div class="daily-todo-check ${done ? 'done' : ''}" onclick="toggleRecurringDone('${dateStr}','${t.id}')">
           ${done ? '✓' : ''}
         </div>
-        <span class="daily-todo-text ${done ? 'done' : ''}" style="display:flex;align-items:center;gap:4px;flex:1">
-          <span style="font-size:10px;color:var(--primary);background:var(--primary-light);padding:1px 5px;border-radius:3px;flex-shrink:0">🔄</span>
-          ${escapeHtml(t.text)}
+        <span class="daily-todo-text ${done ? 'done' : ''}" style="display:flex;align-items:center;gap:4px;flex:1;min-width:0">
+          <span style="font-size:10px;color:${badge.color};background:${badge.bg};padding:1px 5px;border-radius:3px;flex-shrink:0;white-space:nowrap">${badge.label}</span>
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(t.text)}</span>
         </span>
       </div>`;
     }).join('');
@@ -4322,19 +4490,41 @@ self.addEventListener('fetch', e => {
     const container = document.getElementById('recurring-manage-list');
     if (!container) return;
     if (!tasks.length) {
-      container.innerHTML = '<div style="text-align:center;padding:12px;color:var(--text-muted);font-size:13px">まだ毎日のタスクがありません</div>';
+      container.innerHTML = '<div style="text-align:center;padding:16px 0;color:var(--text-muted);font-size:13px">まだ繰り返しタスクがありません</div>';
       return;
     }
-    container.innerHTML = tasks.map((t, i) => `
-      <div class="daily-todo-item">
-        <span style="font-size:12px;color:var(--text-muted);width:18px;text-align:center;flex-shrink:0">${i + 1}</span>
-        <span class="daily-todo-text">${escapeHtml(t.text)}</span>
-        <button class="daily-todo-del" style="opacity:1" onclick="deleteRecurringTask('${t.id}')">×</button>
-      </div>`).join('');
+    container.innerHTML = tasks.map((t) => {
+      const badge = recurringBadge(t);
+      return `<div class="daily-todo-item" style="padding:6px 4px">
+        <span class="daily-todo-text" style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+          <span style="font-size:10px;color:${badge.color};background:${badge.bg};padding:2px 6px;border-radius:4px;flex-shrink:0;white-space:nowrap">${badge.label}</span>
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(t.text)}</span>
+        </span>
+        <button class="daily-todo-del" style="opacity:1;flex-shrink:0" onclick="deleteRecurringTask('${t.id}')">×</button>
+      </div>`;
+    }).join('');
+  }
+
+  // フォームの表示切り替え（毎週→曜日ピッカー、N日ごと→間隔入力）
+  function updateRecurringForm() {
+    const val = document.querySelector('input[name="recurring-repeat"]:checked')?.value || 'daily';
+    const daysPicker = document.getElementById('recurring-days-picker');
+    const intervalPicker = document.getElementById('recurring-interval-picker');
+    if (daysPicker) daysPicker.style.display = val === 'weekly' ? 'block' : 'none';
+    if (intervalPicker) intervalPicker.style.display = val === 'interval' ? 'block' : 'none';
   }
 
   function openRecurringModal() {
     renderRecurringManageList();
+    // フォームリセット
+    const noneRadio = document.querySelector('input[name="recurring-repeat"][value="daily"]');
+    if (noneRadio) noneRadio.checked = true;
+    updateRecurringForm();
+    document.querySelectorAll('.recurring-day-cb').forEach(cb => cb.checked = false);
+    const intInput = document.getElementById('recurring-interval-input');
+    if (intInput) intInput.value = '2';
+    const addInput = document.getElementById('recurring-add-input');
+    if (addInput) addInput.value = '';
     openModal('recurring-modal');
   }
 
@@ -4343,28 +4533,50 @@ self.addEventListener('fetch', e => {
     if (!input) return;
     const text = input.value.trim();
     if (!text) { input.focus(); return; }
-    getRecurringTasks().push({ id: genId(), text });
+
+    const repeat = document.querySelector('input[name="recurring-repeat"]:checked')?.value || 'daily';
+    const task = { id: genId(), text, repeat };
+
+    if (repeat === 'weekly') {
+      const days = [];
+      document.querySelectorAll('.recurring-day-cb:checked').forEach(cb => days.push(parseInt(cb.value)));
+      if (!days.length) { showToast('⚠️ 曜日を1つ以上選択してください', 'error'); return; }
+      task.days = days;
+    } else if (repeat === 'interval') {
+      const n = parseInt(document.getElementById('recurring-interval-input')?.value || '2');
+      if (isNaN(n) || n < 2) { showToast('⚠️ 2以上の数字を入力してください', 'error'); return; }
+      task.interval = n;
+      task.startDate = state.ttDate || today();
+    }
+
+    getRecurringTasks().push(task);
     input.value = '';
     save();
     renderRecurringTasks();
     renderRecurringManageList();
-    showToast('🔄 毎日のタスクを追加しました', 'success');
+
+    const labels = { daily: '毎日', weekly: '毎週', interval: `${task.interval}日ごと` };
+    showToast(`🔄 ${labels[repeat]}のタスクを追加しました`, 'success');
   }
 
   function deleteRecurringTask(id) {
+    if (!confirm('この繰り返しタスクを削除しますか？')) return;
     state.planner.recurringTasks = getRecurringTasks().filter(t => t.id !== id);
     save();
     renderRecurringTasks();
     renderRecurringManageList();
-    showToast('🗑️ 毎日のタスクを削除しました');
+    showToast('🗑️ 繰り返しタスクを削除しました');
   }
 
   function copyRecurringTasks() {
     const tasks = getRecurringTasks();
-    if (!tasks.length) { showToast('⚠️ 毎日のタスクがありません', 'error'); return; }
-    const text = tasks.map(t => t.text).join('\n');
+    if (!tasks.length) { showToast('⚠️ 繰り返しタスクがありません', 'error'); return; }
+    const text = tasks.map(t => {
+      const badge = recurringBadge(t);
+      return `[${badge.label}] ${t.text}`;
+    }).join('\n');
     navigator.clipboard.writeText(text).then(() => {
-      showToast('📋 毎日のタスクをコピーしました', 'success');
+      showToast('📋 繰り返しタスクをコピーしました', 'success');
     }).catch(() => prompt('コピーしてください：', text));
   }
 
@@ -4479,6 +4691,55 @@ self.addEventListener('fetch', e => {
   // ---- TIMETABLE ----
 
   let ttNowTimer = null;
+
+  // タイムテーブル選択コピー用
+  let _ttSelectMode = false;
+  let _ttSelected = new Set(); // 選択中のブロックID集合
+
+  function toggleTTSelectMode() {
+    if (_ttSelectMode && _ttSelected.size > 0) {
+      // 選択アイテムをテキストにしてクリップボードへ
+      const dateStr = state.ttDate;
+      const allBlocks = [
+        ...((state.planner.schedule || {})[dateStr] || []),
+        ...(state.planner.repeatTemplates || []).filter(t => {
+          const repeatExceptions = state.planner.repeatExceptions || {};
+          if (repeatExceptions[t.id + '_' + dateStr]) return false;
+          if (t.startDate && t.startDate > dateStr) return false;
+          const dow = new Date(dateStr + 'T00:00:00').getDay();
+          if (t.repeat === 'daily') return true;
+          if (t.repeat === 'weekly') return t.dayOfWeek === dow;
+          return false;
+        }).map(t => ({ ...t, isRepeat: true }))
+      ];
+      const lines = [];
+      [..._ttSelected].forEach(id => {
+        const b = allBlocks.find(x => x.id === id);
+        if (b) lines.push(`${b.start}〜${b.end} ${b.title}${b.note ? ' (' + b.note + ')' : ''}`);
+      });
+      // 時刻順でソート
+      lines.sort();
+      navigator.clipboard.writeText(lines.join('\n')).then(() => {
+        showToast(`📋 ${lines.length}件の予定をコピーしました`, 'success');
+      }).catch(() => {
+        showToast('⚠️ クリップボードへのアクセスが拒否されました', 'error');
+      });
+      _ttSelectMode = false; _ttSelected.clear();
+    } else if (_ttSelectMode) {
+      // 何も選択せずキャンセル
+      _ttSelectMode = false; _ttSelected.clear();
+    } else {
+      // 選択モード開始
+      _ttSelectMode = true; _ttSelected.clear();
+    }
+    renderTimetable();
+  }
+
+  function toggleTTSelect(id, start, end, title) {
+    if (_ttSelected.has(id)) _ttSelected.delete(id);
+    else _ttSelected.add(id);
+    renderTimetable();
+  }
 
   // 赤線をリアルタイム更新（DOM操作のみ・軽量）
   function updateTTNowLine() {
@@ -4666,11 +4927,35 @@ self.addEventListener('fetch', e => {
     const picker = document.getElementById('tt-date-picker');
     if (picker) picker.value = dateStr;
 
-    const rawBlocks = (state.planner.schedule || {})[dateStr] || [];
+    // リピートテンプレートからこの日に適用されるものを取得
+    const repeatTemplates = state.planner.repeatTemplates || [];
+    const repeatExceptions = state.planner.repeatExceptions || {};
+    const dow = new Date(dateStr + 'T00:00:00').getDay();
+    const repeatBlocks = repeatTemplates.filter(t => {
+      if (repeatExceptions[t.id + '_' + dateStr]) return false; // この日はキャンセル
+      if (t.startDate && t.startDate > dateStr) return false;   // まだ開始していない
+      if (t.repeat === 'daily') return true;
+      if (t.repeat === 'weekly') return t.dayOfWeek === dow;
+      return false;
+    }).map(t => ({ ...t, isRepeat: true }));
+
+    const rawBlocks = [...((state.planner.schedule || {})[dateStr] || []), ...repeatBlocks];
     const body = document.getElementById('timetable-body');
     const isToday = dateStr === today();
     const nowH = new Date().getHours();
     const nowM = new Date().getMinutes();
+
+    // 選択モードUIの更新
+    const selBtn = document.getElementById('tt-select-copy-btn');
+    if (selBtn) {
+      if (_ttSelectMode) {
+        selBtn.textContent = `📋 コピー(${_ttSelected.size})`;
+        selBtn.style.background = '#10b981'; selBtn.style.color = 'white';
+      } else {
+        selBtn.textContent = '📋 選択';
+        selBtn.style.background = 'none'; selBtn.style.color = '#10b981';
+      }
+    }
 
     // Parse block times into minutes
     const blockData = rawBlocks.map(b => {
@@ -4715,15 +5000,29 @@ self.addEventListener('fetch', e => {
       const widthPct = colW - 0.5;
       const showNote = b.note && height > 52;
       const singleLine = height < 38;
+      const isSelected = _ttSelected.has(b.id);
+      const repeatBadge = b.isRepeat
+        ? `<span style="position:absolute;top:2px;left:2px;font-size:9px;background:rgba(255,255,255,0.3);border-radius:3px;padding:0 3px">${b.repeat === 'weekly' ? '週' : '毎日'}🔁</span>`
+        : '';
+      const selectOverlay = _ttSelectMode
+        ? `<div style="position:absolute;inset:0;border-radius:inherit;border:3px solid ${isSelected ? 'white' : 'transparent'};background:${isSelected ? 'rgba(255,255,255,0.25)' : 'transparent'};display:flex;align-items:center;justify-content:center">
+            ${isSelected ? `<span style="font-size:18px;color:white">✓</span>` : ''}
+           </div>`
+        : '';
+      const clickAction = _ttSelectMode
+        ? `event.stopPropagation();toggleTTSelect('${b.id}','${b.start}','${b.end}','${escapeHtml(b.title).replace(/'/g,"\\'")}');`
+        : `event.stopPropagation();openTTModal(null,'${b.id}');`;
       html += `<div class="tt-block-abs${singleLine ? ' tt-single' : ''}" style="top:${top.toFixed(1)}px;height:${height.toFixed(1)}px;left:${leftPct.toFixed(1)}%;width:${widthPct.toFixed(1)}%;background:${b.color};z-index:5"
-        onclick="event.stopPropagation();openTTModal(null,'${b.id}')">
+        onclick="${clickAction}">
+        ${repeatBadge}
         ${singleLine
-          ? `<div class="tt-block-title-line" style="white-space:nowrap;padding-right:22px">${escapeHtml(b.title)} <span style="opacity:0.8;font-size:10px">${b.start}〜${b.end}</span></div>`
-          : `<div class="tt-block-time-line">${b.start}〜${b.end}</div>
+          ? `<div class="tt-block-title-line" style="white-space:nowrap;padding-right:22px;${b.isRepeat?'padding-left:26px':''}">${escapeHtml(b.title)} <span style="opacity:0.8;font-size:10px">${b.start}〜${b.end}</span></div>`
+          : `<div class="tt-block-time-line" style="${b.isRepeat?'padding-left:24px':''}">${b.start}〜${b.end}</div>
              <div class="tt-block-title-line">${escapeHtml(b.title)}</div>
              ${showNote ? `<div class="tt-block-note-line">${escapeHtml(b.note)}</div>` : ''}`
         }
-        <button class="tt-block-del" onclick="event.stopPropagation();deleteTTBlock('${b.id}')" title="削除">🗑</button>
+        ${selectOverlay}
+        ${!_ttSelectMode ? `<button class="tt-block-del" onclick="event.stopPropagation();deleteTTBlock('${b.id}')" title="削除">🗑</button>` : ''}
       </div>`;
     });
 
@@ -4753,6 +5052,7 @@ self.addEventListener('fetch', e => {
 
   function ttCanvasClick(event, START, ROW_H) {
     if (event.target.closest('.tt-block-abs')) return;
+    if (_ttSelectMode) return; // 選択モード中は新規追加しない
     const rect = event.currentTarget.getBoundingClientRect();
     const y = event.clientY - rect.top;
     const totalMin = START * 60 + Math.floor(y / ROW_H * 60);
@@ -4764,8 +5064,32 @@ self.addEventListener('fetch', e => {
   function openTTModal(defaultTime = null, editId = null) {
     document.getElementById('tt-edit-id').value = editId || '';
     const delBtn = document.getElementById('tt-delete-btn');
+    // デフォルトでラジオを「なし」にリセット
+    const noneRadio = document.querySelector('input[name="tt-repeat"][value="none"]');
+    if (noneRadio) noneRadio.checked = true;
+
     if (editId) {
       const dateStr = state.ttDate;
+      // まずリピートテンプレートを確認
+      const rt = (state.planner.repeatTemplates || []).find(t => t.id === editId);
+      if (rt) {
+        document.getElementById('tt-modal-title').textContent = '🔁 リピート予定を編集';
+        document.getElementById('tt-title-input').value = rt.title;
+        document.getElementById('tt-start-input').value = rt.start;
+        document.getElementById('tt-end-input').value = rt.end;
+        document.getElementById('tt-note-input').value = rt.note || '';
+        state.selectedTTColor = rt.color;
+        document.querySelectorAll('#tt-color-palette .color-opt').forEach(el => {
+          el.classList.toggle('selected', el.dataset.color === rt.color);
+        });
+        // リピートラジオ設定
+        const rRadio = document.querySelector(`input[name="tt-repeat"][value="${rt.repeat}"]`);
+        if (rRadio) rRadio.checked = true;
+        delBtn.style.display = 'inline-flex';
+        openModal('tt-modal');
+        return;
+      }
+      // 通常ブロックを確認
       const blocks = (state.planner.schedule || {})[dateStr] || [];
       const b = blocks.find(x => x.id === editId);
       if (b) {
@@ -4805,7 +5129,9 @@ self.addEventListener('fetch', e => {
   function deleteTTFromModal() {
     const id = document.getElementById('tt-edit-id').value;
     if (!id) return;
-    if (!confirm('この予定を削除しますか？')) return;
+    // リピートテンプレートの場合はdeleteTTBlock内でダイアログを表示するのでここではconfirmしない
+    const isRepeat = (state.planner.repeatTemplates || []).some(t => t.id === id);
+    if (!isRepeat && !confirm('この予定を削除しますか？')) return;
     closeModal('tt-modal');
     deleteTTBlock(id);
   }
@@ -4818,30 +5144,60 @@ self.addEventListener('fetch', e => {
     const note = document.getElementById('tt-note-input').value.trim();
     const editId = document.getElementById('tt-edit-id').value;
     const dateStr = state.ttDate;
+    const repeatVal = document.querySelector('input[name="tt-repeat"]:checked')?.value || 'none';
 
     if (!state.planner.schedule) state.planner.schedule = {};
     if (!state.planner.schedule[dateStr]) state.planner.schedule[dateStr] = [];
+    if (!Array.isArray(state.planner.repeatTemplates)) state.planner.repeatTemplates = [];
+    if (!state.planner.repeatExceptions) state.planner.repeatExceptions = {};
 
     if (editId) {
-      const idx = state.planner.schedule[dateStr].findIndex(b => b.id === editId);
-      if (idx !== -1) {
-        const updated = { ...state.planner.schedule[dateStr][idx], title, start, end, note, color: state.selectedTTColor };
-        state.planner.schedule[dateStr][idx] = updated;
-        // Google Calendar 更新
-        if (gcalIsAuthenticated()) gcalUpdateEvent(dateStr, updated);
-        showToast('✏️ 予定を更新しました');
+      // 既存ブロックの編集
+      // repeatTemplatesの中にあるか確認
+      const rtIdx = state.planner.repeatTemplates.findIndex(t => t.id === editId);
+      if (rtIdx !== -1) {
+        // リピートテンプレートの更新
+        const existing = state.planner.repeatTemplates[rtIdx];
+        state.planner.repeatTemplates[rtIdx] = {
+          ...existing, title, start, end, note, color: state.selectedTTColor,
+          repeat: repeatVal === 'none' ? 'daily' : repeatVal
+        };
+        showToast('✏️ リピート予定を更新しました');
+      } else {
+        // 通常ブロックの更新
+        const idx = state.planner.schedule[dateStr].findIndex(b => b.id === editId);
+        if (idx !== -1) {
+          const updated = { ...state.planner.schedule[dateStr][idx], title, start, end, note, color: state.selectedTTColor };
+          state.planner.schedule[dateStr][idx] = updated;
+          if (gcalIsAuthenticated()) gcalUpdateEvent(dateStr, updated);
+          showToast('✏️ 予定を更新しました');
+        }
       }
     } else {
-      const newBlock = { id: genId(), title, start, end, note, color: state.selectedTTColor };
-      state.planner.schedule[dateStr].push(newBlock);
-      // Google Calendar に追加
-      if (gcalIsAuthenticated()) {
-        gcalCreateEvent(dateStr, newBlock).then(ev => {
-          newBlock.gcalId = ev.id;
-          save();
-        }).catch(e => console.warn('GCal create failed:', e));
+      if (repeatVal !== 'none') {
+        // リピートテンプレートとして保存
+        const dow = new Date(dateStr + 'T00:00:00').getDay();
+        const template = {
+          id: genId(), title, start, end, note,
+          color: state.selectedTTColor,
+          repeat: repeatVal,
+          startDate: dateStr,
+          dayOfWeek: dow  // weekly の場合に使用
+        };
+        state.planner.repeatTemplates.push(template);
+        showToast(`🔁 ${repeatVal === 'weekly' ? '毎週' : '毎日'}のリピート予定を追加しました`, 'success');
+      } else {
+        // 通常の1回予定として保存
+        const newBlock = { id: genId(), title, start, end, note, color: state.selectedTTColor };
+        state.planner.schedule[dateStr].push(newBlock);
+        if (gcalIsAuthenticated()) {
+          gcalCreateEvent(dateStr, newBlock).then(ev => {
+            newBlock.gcalId = ev.id;
+            save();
+          }).catch(e => console.warn('GCal create failed:', e));
+        }
+        showToast('📅 予定を追加しました', 'success');
       }
-      showToast('📅 予定を追加しました', 'success');
     }
 
     save();
@@ -5017,10 +5373,35 @@ self.addEventListener('fetch', e => {
 
   function deleteTTBlock(id) {
     const dateStr = state.ttDate;
+    if (!state.planner.repeatExceptions) state.planner.repeatExceptions = {};
+
+    // リピートテンプレートかどうか確認
+    const rtIdx = (state.planner.repeatTemplates || []).findIndex(t => t.id === id);
+    if (rtIdx !== -1) {
+      // リピートの削除: この日だけ or 全て
+      const choice = confirm('このリピート予定の削除方法を選択してください。\n\n[OK] → この日だけ削除\n[キャンセル] → 全てのリピートを削除');
+      if (choice) {
+        // この日だけ例外として除外
+        state.planner.repeatExceptions[id + '_' + dateStr] = true;
+        showToast('🗑️ この日の予定を削除しました');
+      } else {
+        // 全てのリピートを削除（確認）
+        if (confirm('全ての繰り返し予定を削除しますか？')) {
+          state.planner.repeatTemplates.splice(rtIdx, 1);
+          // 関連する例外も掃除
+          Object.keys(state.planner.repeatExceptions).forEach(k => {
+            if (k.startsWith(id + '_')) delete state.planner.repeatExceptions[k];
+          });
+          showToast('🗑️ 全リピート予定を削除しました', 'success');
+        } else return;
+      }
+      save(); renderTimetable(); return;
+    }
+
+    // 通常ブロックの削除
     if (!state.planner.schedule || !state.planner.schedule[dateStr]) return;
     const block = state.planner.schedule[dateStr].find(b => b.id === id);
     state.planner.schedule[dateStr] = state.planner.schedule[dateStr].filter(b => b.id !== id);
-    // Google Calendar からも削除
     if (block && block.gcalId && gcalIsAuthenticated()) gcalDeleteEvent(block.gcalId);
     save();
     renderTimetable();
