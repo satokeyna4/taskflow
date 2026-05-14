@@ -2601,23 +2601,12 @@
         <!-- 曜日選択（毎週のとき表示） -->
         <div id="recurring-days-picker" style="display:none;margin-bottom:8px">
           <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">曜日を選択（複数可）</div>
-          <div style="display:flex;gap:5px;flex-wrap:wrap">
-            ${['日','月','火','水','木','金','土'].map((d,i)=>`
-            <span class="recurring-dow-btn" data-dow="${i}" onclick="toggleDowBtn(this)"
-              style="display:inline-block;width:34px;height:34px;line-height:34px;text-align:center;font-size:13px;font-weight:600;border-radius:50%;border:1px solid var(--border);cursor:pointer;user-select:none;color:${i===0?'#ef4444':i===6?'#3b82f6':'var(--text)'}">${d}</span>`).join('')}
-          </div>
+          <div id="recurring-dow-buttons" style="display:flex;gap:5px;flex-wrap:wrap"></div>
         </div>
         <!-- 毎月の日付選択 -->
         <div id="recurring-monthly-picker" style="display:none;margin-bottom:8px">
           <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">毎月何日に表示するか（複数可）</div>
-          <div style="display:flex;gap:3px;flex-wrap:wrap">
-            ${Array.from({length:31},(_,i)=>i+1).map(d=>`
-            <label style="cursor:pointer">
-              <input type="checkbox" class="recurring-dom-cb" value="${d}" style="display:none">
-              <span class="recurring-dom-btn" data-day="${d}" onclick="toggleDomBtn(this)"
-                style="display:inline-block;width:26px;height:26px;line-height:26px;text-align:center;font-size:12px;border-radius:5px;border:1px solid var(--border);cursor:pointer;user-select:none">${d}</span>
-            </label>`).join('')}
-          </div>
+          <div id="recurring-dom-buttons" style="display:flex;gap:3px;flex-wrap:wrap"></div>
           <div style="font-size:11px;color:var(--text-muted);margin-top:4px">※ 月末日（29〜31日）は短い月は表示されません</div>
         </div>
         <!-- N日ごと設定 -->
@@ -4489,20 +4478,20 @@ self.addEventListener('fetch', e => {
     }
   }
 
-  // 曜日ボタンのオン/オフ切り替え（日=赤、土=青、平日=primary）
+  // 曜日ボタンのオン/オフ切り替え
   function toggleDowBtn(el) {
     const isOn = el.dataset.on === '1';
-    const dow = parseInt(el.dataset.dow);
-    const offColor = dow === 0 ? '#ef4444' : dow === 6 ? '#3b82f6' : 'var(--text)';
+    const offColor = el.dataset.offcolor || 'var(--text)';
+    const onColor = el.dataset.oncolor || 'var(--primary)';
     if (isOn) {
       el.style.background = '';
       el.style.color = offColor;
       el.style.borderColor = 'var(--border)';
       el.dataset.on = '0';
     } else {
-      el.style.background = dow === 0 ? '#ef4444' : dow === 6 ? '#3b82f6' : 'var(--primary)';
+      el.style.background = onColor;
       el.style.color = 'white';
-      el.style.borderColor = el.style.background;
+      el.style.borderColor = onColor;
       el.dataset.on = '1';
     }
   }
@@ -4578,21 +4567,30 @@ self.addEventListener('fetch', e => {
     const dailyRadio = document.querySelector('input[name="recurring-repeat"][value="daily"]');
     if (dailyRadio) dailyRadio.checked = true;
     updateRecurringForm();
-    // 曜日ボタンをリセット
-    document.querySelectorAll('.recurring-dow-btn').forEach(btn => {
-      const dow = parseInt(btn.dataset.dow);
-      btn.style.background = '';
-      btn.style.color = dow === 0 ? '#ef4444' : dow === 6 ? '#3b82f6' : 'var(--text)';
-      btn.style.borderColor = 'var(--border)';
-      btn.dataset.on = '0';
-    });
-    // 毎月ボタンをリセット
-    document.querySelectorAll('.recurring-dom-btn').forEach(btn => {
-      btn.style.background = '';
-      btn.style.color = '';
-      btn.style.borderColor = 'var(--border)';
-      btn.dataset.on = '0';
-    });
+
+    // 曜日ボタンを動的生成
+    const dowWrap = document.getElementById('recurring-dow-buttons');
+    if (dowWrap) {
+      const dayNames = ['日','月','火','水','木','金','土'];
+      const colors = ['#ef4444','var(--text)','var(--text)','var(--text)','var(--text)','var(--text)','#3b82f6'];
+      const selColors = ['#ef4444','var(--primary)','var(--primary)','var(--primary)','var(--primary)','var(--primary)','#3b82f6'];
+      dowWrap.innerHTML = dayNames.map((d, i) => `
+        <span class="recurring-dow-btn" data-dow="${i}" data-on="0" data-offcolor="${colors[i]}" data-oncolor="${selColors[i]}"
+          onclick="toggleDowBtn(this)"
+          style="display:inline-block;width:34px;height:34px;line-height:34px;text-align:center;font-size:13px;font-weight:600;border-radius:50%;border:1px solid var(--border);cursor:pointer;user-select:none;color:${colors[i]}">${d}</span>
+      `).join('');
+    }
+
+    // 毎月ボタンを動的生成
+    const domWrap = document.getElementById('recurring-dom-buttons');
+    if (domWrap) {
+      domWrap.innerHTML = Array.from({length:31}, (_,i) => i+1).map(d => `
+        <span class="recurring-dom-btn" data-day="${d}" data-on="0"
+          onclick="toggleDomBtn(this)"
+          style="display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;font-size:12px;border-radius:5px;border:1px solid var(--border);cursor:pointer;user-select:none;margin-bottom:3px">${d}</span>
+      `).join('');
+    }
+
     const intInput = document.getElementById('recurring-interval-input');
     if (intInput) intInput.value = '2';
     const addInput = document.getElementById('recurring-add-input');
