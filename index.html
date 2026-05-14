@@ -2592,19 +2592,33 @@
             <input type="radio" name="recurring-repeat" value="weekly" onchange="updateRecurringForm()"> 毎週
           </label>
           <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary)">
+            <input type="radio" name="recurring-repeat" value="monthly" onchange="updateRecurringForm()"> 毎月
+          </label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary)">
             <input type="radio" name="recurring-repeat" value="interval" onchange="updateRecurringForm()"> N日ごと
           </label>
         </div>
         <!-- 曜日選択（毎週のとき表示） -->
         <div id="recurring-days-picker" style="display:none;margin-bottom:8px">
-          <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">曜日を選択（複数可）</div>
-          <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">曜日を選択（複数可）</div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap">
             ${['日','月','火','水','木','金','土'].map((d,i)=>`
-            <label style="display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer">
-              <input type="checkbox" class="recurring-day-cb" value="${i}" style="cursor:pointer">
-              <span style="font-size:12px;width:24px;text-align:center;padding:2px 0;border-radius:4px;border:1px solid var(--border);${i===0||i===6?'color:#ef4444':'color:var(--text)'}">${d}</span>
+            <span class="recurring-dow-btn" data-dow="${i}" onclick="toggleDowBtn(this)"
+              style="display:inline-block;width:34px;height:34px;line-height:34px;text-align:center;font-size:13px;font-weight:600;border-radius:50%;border:1px solid var(--border);cursor:pointer;user-select:none;color:${i===0?'#ef4444':i===6?'#3b82f6':'var(--text)'}">${d}</span>`).join('')}
+          </div>
+        </div>
+        <!-- 毎月の日付選択 -->
+        <div id="recurring-monthly-picker" style="display:none;margin-bottom:8px">
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">毎月何日に表示するか（複数可）</div>
+          <div style="display:flex;gap:3px;flex-wrap:wrap">
+            ${Array.from({length:31},(_,i)=>i+1).map(d=>`
+            <label style="cursor:pointer">
+              <input type="checkbox" class="recurring-dom-cb" value="${d}" style="display:none">
+              <span class="recurring-dom-btn" data-day="${d}" onclick="toggleDomBtn(this)"
+                style="display:inline-block;width:26px;height:26px;line-height:26px;text-align:center;font-size:12px;border-radius:5px;border:1px solid var(--border);cursor:pointer;user-select:none">${d}</span>
             </label>`).join('')}
           </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px">※ 月末日（29〜31日）は短い月は表示されません</div>
         </div>
         <!-- N日ごと設定 -->
         <div id="recurring-interval-picker" style="display:none;margin-bottom:8px">
@@ -4424,6 +4438,10 @@ self.addEventListener('fetch', e => {
       const dow = new Date(dateStr + 'T00:00:00').getDay();
       return Array.isArray(task.days) && task.days.includes(dow);
     }
+    if (repeat === 'monthly') {
+      const dom = new Date(dateStr + 'T00:00:00').getDate();
+      return Array.isArray(task.daysOfMonth) && task.daysOfMonth.includes(dom);
+    }
     if (repeat === 'interval') {
       const base = task.startDate || today();
       const msPerDay = 86400000;
@@ -4445,10 +4463,48 @@ self.addEventListener('fetch', e => {
       const labels = (task.days || []).sort().map(d => dayNames[d]).join('');
       return { label: labels + '曜', color: '#059669', bg: '#d1fae5' };
     }
+    if (repeat === 'monthly') {
+      const doms = (task.daysOfMonth || []).sort((a,b)=>a-b).join('・');
+      return { label: `毎月${doms}日`, color: '#d97706', bg: '#fef3c7' };
+    }
     if (repeat === 'interval') {
       return { label: `${task.interval || 2}日ごと`, color: '#7c3aed', bg: '#ede9fe' };
     }
     return { label: '🔄', color: 'var(--primary)', bg: 'var(--primary-light)' };
+  }
+
+  // 毎月の日ボタンのオン/オフ切り替え
+  function toggleDomBtn(el) {
+    const isOn = el.dataset.on === '1';
+    if (isOn) {
+      el.style.background = '';
+      el.style.color = '';
+      el.style.borderColor = 'var(--border)';
+      el.dataset.on = '0';
+    } else {
+      el.style.background = 'var(--primary)';
+      el.style.color = 'white';
+      el.style.borderColor = 'var(--primary)';
+      el.dataset.on = '1';
+    }
+  }
+
+  // 曜日ボタンのオン/オフ切り替え（日=赤、土=青、平日=primary）
+  function toggleDowBtn(el) {
+    const isOn = el.dataset.on === '1';
+    const dow = parseInt(el.dataset.dow);
+    const offColor = dow === 0 ? '#ef4444' : dow === 6 ? '#3b82f6' : 'var(--text)';
+    if (isOn) {
+      el.style.background = '';
+      el.style.color = offColor;
+      el.style.borderColor = 'var(--border)';
+      el.dataset.on = '0';
+    } else {
+      el.style.background = dow === 0 ? '#ef4444' : dow === 6 ? '#3b82f6' : 'var(--primary)';
+      el.style.color = 'white';
+      el.style.borderColor = el.style.background;
+      el.dataset.on = '1';
+    }
   }
 
   function renderRecurringTasks() {
@@ -4505,22 +4561,38 @@ self.addEventListener('fetch', e => {
     }).join('');
   }
 
-  // フォームの表示切り替え（毎週→曜日ピッカー、N日ごと→間隔入力）
+  // フォームの表示切り替え
   function updateRecurringForm() {
     const val = document.querySelector('input[name="recurring-repeat"]:checked')?.value || 'daily';
     const daysPicker = document.getElementById('recurring-days-picker');
+    const monthlyPicker = document.getElementById('recurring-monthly-picker');
     const intervalPicker = document.getElementById('recurring-interval-picker');
     if (daysPicker) daysPicker.style.display = val === 'weekly' ? 'block' : 'none';
+    if (monthlyPicker) monthlyPicker.style.display = val === 'monthly' ? 'block' : 'none';
     if (intervalPicker) intervalPicker.style.display = val === 'interval' ? 'block' : 'none';
   }
 
   function openRecurringModal() {
     renderRecurringManageList();
     // フォームリセット
-    const noneRadio = document.querySelector('input[name="recurring-repeat"][value="daily"]');
-    if (noneRadio) noneRadio.checked = true;
+    const dailyRadio = document.querySelector('input[name="recurring-repeat"][value="daily"]');
+    if (dailyRadio) dailyRadio.checked = true;
     updateRecurringForm();
-    document.querySelectorAll('.recurring-day-cb').forEach(cb => cb.checked = false);
+    // 曜日ボタンをリセット
+    document.querySelectorAll('.recurring-dow-btn').forEach(btn => {
+      const dow = parseInt(btn.dataset.dow);
+      btn.style.background = '';
+      btn.style.color = dow === 0 ? '#ef4444' : dow === 6 ? '#3b82f6' : 'var(--text)';
+      btn.style.borderColor = 'var(--border)';
+      btn.dataset.on = '0';
+    });
+    // 毎月ボタンをリセット
+    document.querySelectorAll('.recurring-dom-btn').forEach(btn => {
+      btn.style.background = '';
+      btn.style.color = '';
+      btn.style.borderColor = 'var(--border)';
+      btn.dataset.on = '0';
+    });
     const intInput = document.getElementById('recurring-interval-input');
     if (intInput) intInput.value = '2';
     const addInput = document.getElementById('recurring-add-input');
@@ -4539,9 +4611,14 @@ self.addEventListener('fetch', e => {
 
     if (repeat === 'weekly') {
       const days = [];
-      document.querySelectorAll('.recurring-day-cb:checked').forEach(cb => days.push(parseInt(cb.value)));
+      document.querySelectorAll('.recurring-dow-btn[data-on="1"]').forEach(btn => days.push(parseInt(btn.dataset.dow)));
       if (!days.length) { showToast('⚠️ 曜日を1つ以上選択してください', 'error'); return; }
       task.days = days;
+    } else if (repeat === 'monthly') {
+      const doms = [];
+      document.querySelectorAll('.recurring-dom-btn[data-on="1"]').forEach(btn => doms.push(parseInt(btn.dataset.day)));
+      if (!doms.length) { showToast('⚠️ 日付を1つ以上選択してください', 'error'); return; }
+      task.daysOfMonth = doms;
     } else if (repeat === 'interval') {
       const n = parseInt(document.getElementById('recurring-interval-input')?.value || '2');
       if (isNaN(n) || n < 2) { showToast('⚠️ 2以上の数字を入力してください', 'error'); return; }
@@ -4555,8 +4632,8 @@ self.addEventListener('fetch', e => {
     renderRecurringTasks();
     renderRecurringManageList();
 
-    const labels = { daily: '毎日', weekly: '毎週', interval: `${task.interval}日ごと` };
-    showToast(`🔄 ${labels[repeat]}のタスクを追加しました`, 'success');
+    const badge = recurringBadge(task);
+    showToast(`🔄 ${badge.label}のタスクを追加しました`, 'success');
   }
 
   function deleteRecurringTask(id) {
