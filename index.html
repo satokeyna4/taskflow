@@ -453,10 +453,8 @@
     .task-actions {
       display: flex;
       gap: 4px;
-      opacity: 0;
-      transition: opacity 0.2s;
+      opacity: 1;
     }
-    .task-card:hover .task-actions { opacity: 1; }
 
     .icon-btn {
       width: 28px; height: 28px;
@@ -1684,13 +1682,28 @@
     .daily-todo-text.done { text-decoration: line-through; color: var(--text-muted); }
 
     .daily-todo-del {
-      width: 18px; height: 18px;
+      width: 20px; height: 20px;
       border: none; background: transparent;
       color: var(--text-muted); cursor: pointer;
       font-size: 13px; opacity: 0; transition: opacity 0.15s;
-      border-radius: 4px; flex-shrink: 0;
+      border-radius: 4px; flex-shrink: 0; display:flex; align-items:center; justify-content:center;
     }
     .daily-todo-del:hover { background: #fee2e2; color: var(--danger); opacity: 1 !important; }
+    .daily-todo-edit {
+      width: 20px; height: 20px;
+      border: none; background: transparent;
+      color: var(--text-muted); cursor: pointer;
+      font-size: 12px; opacity: 0; transition: opacity 0.15s;
+      border-radius: 4px; flex-shrink: 0; display:flex; align-items:center; justify-content:center;
+    }
+    .daily-todo-edit:hover { background: var(--primary-light); color: var(--primary); opacity: 1 !important; }
+    .daily-todo-item:hover .daily-todo-del,
+    .daily-todo-item:hover .daily-todo-edit { opacity: 1; }
+    .daily-todo-inline-input {
+      flex: 1; min-width: 0; border: 1px solid var(--primary);
+      border-radius: 5px; padding: 2px 6px; font-size: 13px;
+      background: var(--surface); color: var(--text); outline: none;
+    }
 
     .planner-quick-add {
       display: flex; gap: 6px; margin-top: 8px;
@@ -2614,12 +2627,29 @@
       <div id="recurring-manage-list"></div>
       <!-- 追加フォーム -->
       <div id="recurring-add-form" style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px">
-        <div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:6px">＋ 新しい繰り返しタスク</div>
-        <input class="planner-quick-input" id="recurring-add-input" type="text"
-          placeholder="タスク名を入力..."
-          style="margin-bottom:8px;width:100%;box-sizing:border-box"
-          oninput="if(!event.isComposing)void 0" oncompositionend="void 0"
-          onkeydown="if(event.key==='Enter'&&!event.isComposing) addRecurringTask()">
+        <!-- 入力モード切替 -->
+        <div style="display:flex;gap:6px;margin-bottom:10px">
+          <button id="recurring-mode-single" onclick="setRecurringInputMode('single')"
+            style="flex:1;padding:5px;border-radius:6px;border:1.5px solid var(--primary);background:var(--primary);color:white;font-size:12px;cursor:pointer">１件ずつ</button>
+          <button id="recurring-mode-bulk" onclick="setRecurringInputMode('bulk')"
+            style="flex:1;padding:5px;border-radius:6px;border:1.5px solid var(--border);background:none;color:var(--text-muted);font-size:12px;cursor:pointer">📋 まとめて追加</button>
+        </div>
+        <!-- 1件入力 -->
+        <div id="recurring-input-single">
+          <input class="planner-quick-input" id="recurring-add-input" type="text"
+            placeholder="タスク名を入力..."
+            style="margin-bottom:8px;width:100%;box-sizing:border-box"
+            oninput="if(!event.isComposing)void 0" oncompositionend="void 0"
+            onkeydown="if(event.key==='Enter'&&!event.isComposing) addRecurringTask()">
+        </div>
+        <!-- まとめて入力 -->
+        <div id="recurring-input-bulk" style="display:none">
+          <textarea id="recurring-bulk-input" rows="5"
+            placeholder="1行に1つのタスク名を入力&#10;（コピペでまとめて登録できます）&#10;&#10;例：&#10;メール確認&#10;体重記録&#10;日記を書く"
+            style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;line-height:1.7;box-sizing:border-box;resize:vertical;background:var(--surface)"
+            oninput="updateRecurringBulkPreview()" oncompositionend="updateRecurringBulkPreview()"></textarea>
+          <div id="recurring-bulk-preview" style="font-size:11px;color:var(--text-muted);margin-top:4px"></div>
+        </div>
         <!-- 繰り返し種別 -->
         <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
           <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary)">
@@ -2980,9 +3010,12 @@
         </div>
       </div>
     </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal('task-modal')">キャンセル</button>
-      <button class="btn btn-primary" onclick="saveTask()">保存</button>
+    <div class="modal-footer" style="justify-content:space-between">
+      <button class="btn" id="task-delete-btn" onclick="deleteTaskFromModal()" style="background:#fee2e2;color:#ef4444;border:1px solid #fca5a5;display:none">🗑️ 削除</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" onclick="closeModal('task-modal')">キャンセル</button>
+        <button class="btn btn-primary" onclick="saveTask()">保存</button>
+      </div>
     </div>
   </div>
 </div>
@@ -3954,6 +3987,7 @@ self.addEventListener('fetch', e => {
     document.getElementById('task-status-input').value = status;
     document.getElementById('task-category-input').value = '';
     document.getElementById('subtask-list').innerHTML = '';
+    document.getElementById('task-delete-btn').style.display = 'none';
     renderTagChips();
     populateCategorySelect();
     openModal('task-modal');
@@ -3973,6 +4007,7 @@ self.addEventListener('fetch', e => {
     document.getElementById('task-priority-input').value = t.priority || 'none';
     document.getElementById('task-status-input').value = t.status || 'todo';
     document.getElementById('task-category-input').value = t.category || '';
+    document.getElementById('task-delete-btn').style.display = 'inline-flex';
 
     // Subtasks
     const sl = document.getElementById('subtask-list');
@@ -3982,6 +4017,15 @@ self.addEventListener('fetch', e => {
     renderTagChips();
     populateCategorySelect(t.category);
     openModal('task-modal');
+  }
+
+  function deleteTaskFromModal() {
+    const id = state.editingTaskId;
+    if (!id) return;
+    closeModal('task-modal');
+    // 既存の削除フローへ
+    const e = { stopPropagation: () => {} };
+    deleteTask(e, id);
   }
 
   function saveTask() {
@@ -4310,7 +4354,7 @@ self.addEventListener('fetch', e => {
       }
       // 通常モード
       return `
-      <div class="daily-todo-item" style="gap:4px">
+      <div class="daily-todo-item" style="gap:4px" id="todo-item-${dateStr}-${i}">
         <div class="daily-todo-check ${t.done ? 'done' : ''}" onclick="toggleDailyTodo('${dateStr}',${i})">
           ${t.done ? '✓' : ''}
         </div>
@@ -4318,7 +4362,8 @@ self.addEventListener('fetch', e => {
           ${t.rolledFrom ? `<span style="font-size:10px;color:#d97706;background:#fef3c7;padding:1px 5px;border-radius:3px;flex-shrink:0">繰越</span>` : ''}
           <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(t.text)}</span>
         </span>
-        <button title="${isRecurring ? '毎日のタスクに登録済み' : '毎日のタスクに追加'}"
+        <button class="daily-todo-edit" title="編集" onclick="startEditDailyTodo('${dateStr}',${i})" style="opacity:1">✏️</button>
+        <button title="${isRecurring ? '繰り返しに登録済み' : '繰り返しに追加'}"
           onclick="toggleTodoToRecurring(${i},'${dateStr}')"
           style="flex-shrink:0;font-size:11px;border:1px solid ${isRecurring ? 'var(--primary)' : 'var(--border)'};background:${isRecurring ? 'var(--primary-light)' : 'none'};color:${isRecurring ? 'var(--primary)' : 'var(--text-muted)'};border-radius:4px;padding:1px 5px;cursor:pointer;line-height:1.4">🔄</button>
         <button class="daily-todo-del" onclick="deleteDailyTodo('${dateStr}',${i})">×</button>
@@ -4359,6 +4404,51 @@ self.addEventListener('fetch', e => {
     const todos = getDailyTodos(dateStr);
     todos.splice(i, 1);
     save();
+    renderDailyTodos();
+  }
+
+  // インライン編集：テキストをinputに置き換える
+  function startEditDailyTodo(dateStr, i) {
+    const item = document.getElementById(`todo-item-${dateStr}-${i}`);
+    if (!item) return;
+    const todos = getDailyTodos(dateStr);
+    const todo = todos[i];
+    if (!todo) return;
+
+    // テキストspanをinputに差し替え
+    const textSpan = item.querySelector('.daily-todo-text');
+    if (!textSpan) return;
+    const currentText = todo.text;
+    textSpan.innerHTML = `<input class="daily-todo-inline-input" type="text"
+      id="todo-inline-input-${i}"
+      value="${escapeHtml(currentText)}"
+      onkeydown="if(event.key==='Enter'&&!event.isComposing)saveDailyTodoEdit('${dateStr}',${i});else if(event.key==='Escape')renderDailyTodos();"
+      oncompositionend="void 0"
+      onblur="saveDailyTodoEdit('${dateStr}',${i})">`;
+
+    // ✏️ボタンを保存ボタンに変更
+    const editBtn = item.querySelector('.daily-todo-edit');
+    if (editBtn) {
+      editBtn.textContent = '✓';
+      editBtn.title = '保存';
+      editBtn.style.color = 'var(--primary)';
+      editBtn.style.background = 'var(--primary-light)';
+      editBtn.onclick = () => saveDailyTodoEdit(dateStr, i);
+    }
+
+    const input = document.getElementById(`todo-inline-input-${i}`);
+    if (input) { input.focus(); input.select(); }
+  }
+
+  function saveDailyTodoEdit(dateStr, i) {
+    const input = document.getElementById(`todo-inline-input-${i}`);
+    if (!input) return; // すでに保存済み
+    const newText = input.value.trim();
+    const todos = getDailyTodos(dateStr);
+    if (todos[i] && newText) {
+      todos[i].text = newText;
+      save();
+    }
     renderDailyTodos();
   }
 
@@ -4638,6 +4728,40 @@ self.addEventListener('fetch', e => {
     }).join('');
   }
 
+  // 入力モード切替（1件ずつ / まとめて）
+  let _recurringInputMode = 'single';
+  function setRecurringInputMode(mode) {
+    _recurringInputMode = mode;
+    const isSingle = mode === 'single';
+    document.getElementById('recurring-input-single').style.display = isSingle ? 'block' : 'none';
+    document.getElementById('recurring-input-bulk').style.display = isSingle ? 'none' : 'block';
+    const sBtn = document.getElementById('recurring-mode-single');
+    const bBtn = document.getElementById('recurring-mode-bulk');
+    if (sBtn) {
+      sBtn.style.background = isSingle ? 'var(--primary)' : 'none';
+      sBtn.style.color = isSingle ? 'white' : 'var(--text-muted)';
+      sBtn.style.borderColor = isSingle ? 'var(--primary)' : 'var(--border)';
+    }
+    if (bBtn) {
+      bBtn.style.background = isSingle ? 'none' : 'var(--primary)';
+      bBtn.style.color = isSingle ? 'var(--text-muted)' : 'white';
+      bBtn.style.borderColor = isSingle ? 'var(--border)' : 'var(--primary)';
+    }
+    if (!isSingle) {
+      document.getElementById('recurring-bulk-preview').textContent = '';
+      document.getElementById('recurring-bulk-input').value = '';
+      document.getElementById('recurring-bulk-input').focus();
+    }
+  }
+
+  // まとめて入力のプレビュー更新
+  function updateRecurringBulkPreview() {
+    const lines = (document.getElementById('recurring-bulk-input')?.value || '')
+      .split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const el = document.getElementById('recurring-bulk-preview');
+    if (el) el.textContent = lines.length ? `${lines.length}件のタスクを追加します` : '';
+  }
+
   // フォームの表示切り替え
   function updateRecurringForm() {
     const val = document.querySelector('input[name="recurring-repeat"]:checked')?.value || 'daily';
@@ -4651,6 +4775,8 @@ self.addEventListener('fetch', e => {
 
   function openRecurringModal() {
     renderRecurringManageList();
+    // 入力モードをリセット
+    setRecurringInputMode('single');
     // フォームリセット
     const dailyRadio = document.querySelector('input[name="recurring-repeat"][value="daily"]');
     if (dailyRadio) dailyRadio.checked = true;
@@ -4687,39 +4813,68 @@ self.addEventListener('fetch', e => {
   }
 
   function addRecurringTask() {
-    const input = document.getElementById('recurring-add-input');
-    if (!input) return;
-    const text = input.value.trim();
-    if (!text) { input.focus(); return; }
-
     const repeat = document.querySelector('input[name="recurring-repeat"]:checked')?.value || 'daily';
-    const task = { id: genId(), text, repeat };
 
+    // 共通の繰り返し設定を先にバリデート
+    let sharedProps = { repeat };
     if (repeat === 'weekly') {
       const days = [];
       document.querySelectorAll('.recurring-dow-btn[data-on="1"]').forEach(btn => days.push(parseInt(btn.dataset.dow)));
       if (!days.length) { showToast('⚠️ 曜日を1つ以上選択してください', 'error'); return; }
-      task.days = days;
+      sharedProps.days = days;
     } else if (repeat === 'monthly') {
       const doms = [];
       document.querySelectorAll('.recurring-dom-btn[data-on="1"]').forEach(btn => doms.push(parseInt(btn.dataset.day)));
       if (!doms.length) { showToast('⚠️ 日付を1つ以上選択してください', 'error'); return; }
-      task.daysOfMonth = doms;
+      sharedProps.daysOfMonth = doms;
     } else if (repeat === 'interval') {
       const n = parseInt(document.getElementById('recurring-interval-input')?.value || '2');
       if (isNaN(n) || n < 2) { showToast('⚠️ 2以上の数字を入力してください', 'error'); return; }
-      task.interval = n;
-      task.startDate = state.ttDate || today();
+      sharedProps.interval = n;
+      sharedProps.startDate = state.ttDate || today();
     }
 
-    getRecurringTasks().push(task);
-    input.value = '';
-    save();
-    renderRecurringTasks();
-    renderRecurringManageList();
+    const recurring = getRecurringTasks();
+    const existingTexts = new Set(recurring.map(r => r.text));
 
-    const badge = recurringBadge(task);
-    showToast(`🔄 ${badge.label}のタスクを追加しました`, 'success');
+    if (_recurringInputMode === 'bulk') {
+      // まとめて追加モード
+      const textarea = document.getElementById('recurring-bulk-input');
+      const lines = (textarea?.value || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      if (!lines.length) { textarea?.focus(); return; }
+
+      let added = 0, skipped = 0;
+      lines.forEach(text => {
+        if (existingTexts.has(text)) { skipped++; return; }
+        recurring.push({ id: genId(), text, ...sharedProps });
+        existingTexts.add(text);
+        added++;
+      });
+      if (textarea) textarea.value = '';
+      document.getElementById('recurring-bulk-preview').textContent = '';
+      save();
+      renderRecurringTasks();
+      renderRecurringManageList();
+      const badge = recurringBadge({ repeat, ...sharedProps });
+      const msg = skipped > 0
+        ? `🔄 ${added}件追加（${skipped}件は重複のためスキップ）`
+        : `🔄 ${added}件の${badge.label}タスクをまとめて追加しました`;
+      showToast(msg, 'success');
+    } else {
+      // 1件ずつモード
+      const input = document.getElementById('recurring-add-input');
+      if (!input) return;
+      const text = input.value.trim();
+      if (!text) { input.focus(); return; }
+      if (existingTexts.has(text)) { showToast('⚠️ 同じ名前のタスクがすでに存在します', 'error'); return; }
+      recurring.push({ id: genId(), text, ...sharedProps });
+      input.value = '';
+      save();
+      renderRecurringTasks();
+      renderRecurringManageList();
+      const badge = recurringBadge({ repeat, ...sharedProps });
+      showToast(`🔄 ${badge.label}のタスクを追加しました`, 'success');
+    }
   }
 
   function deleteRecurringTask(id) {
