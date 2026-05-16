@@ -3135,11 +3135,14 @@
     if (data._writeId && data._writeId === _lastWriteId) return;
     // すでに適用済みなら無視
     if (data._writeId && data._writeId === _lastKnownWriteId) return;
-    // Firebaseのデータがローカルより古い場合は無視（ローカルを優先）
-    const localTs = parseInt(localStorage.getItem('taskflow_local_ts') || '0');
-    if (data._updatedAt && data._updatedAt < localTs) {
-      setSyncStatus('synced');
-      return;
+    // Firebaseのデータがローカルより古い場合は無視（ただしlocalTsが存在する場合のみ）
+    const localTsRaw = localStorage.getItem('taskflow_local_ts');
+    if (localTsRaw) {
+      const localTs = parseInt(localTsRaw);
+      if (data._updatedAt && data._updatedAt < localTs) {
+        setSyncStatus('synced');
+        return;
+      }
     }
     if (data.tasks)      state.tasks = data.tasks;
     if (data.categories) state.categories = data.categories;
@@ -3161,8 +3164,13 @@
       state.planner = { ...state.planner, ...p };
     }
     _lastKnownWriteId = data._writeId;
+    // ローカルタイムスタンプをFirebaseの値に合わせて更新（次回の比較を正確にする）
+    if (data._updatedAt) localStorage.setItem('taskflow_local_ts', String(data._updatedAt));
     setSyncStatus('synced');
+    // 現在表示中のビューを再描画
     renderTasks();
+    if (state.currentView === 'planner') renderPlannerView();
+    else if (state.currentView === 'memo') renderMemoView();
   }
 
   function _fetchFb() {
@@ -3207,6 +3215,14 @@
     if (!confirm(`同期コードを「${code}」に変更しますか？\nこのデバイスのデータは「${code}」のデータに切り替わります。`)) return;
     _userId = code;
     localStorage.setItem('tf_user_id', _userId);
+    // ローカルタイムスタンプをリセット → Firebaseデータが「古い」と判定されないようにする
+    localStorage.removeItem('taskflow_local_ts');
+    // ローカルデータもクリア → Firebaseからクリーンに読み込む
+    localStorage.removeItem('taskflow_tasks');
+    localStorage.removeItem('taskflow_planner');
+    localStorage.removeItem('taskflow_lists');
+    localStorage.removeItem('taskflow_archive');
+    localStorage.removeItem('taskflow_memos');
     _lastWriteId = null;
     alert('同期コードを変更しました。ページをリロードします。');
     location.reload();
