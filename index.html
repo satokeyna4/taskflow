@@ -2867,17 +2867,32 @@
 
   <!-- 同期コード -->
   <div style="background:var(--primary-light);border:1.5px solid var(--primary);border-radius:10px;padding:12px;margin-bottom:12px">
-    <div style="font-size:12px;font-weight:600;color:var(--primary);margin-bottom:6px">🔑 あなたの同期コード</div>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-      <span id="sync-code-display" style="font-size:20px;font-weight:700;letter-spacing:3px;color:var(--text);font-family:monospace"></span>
-      <button onclick="navigator.clipboard.writeText(document.getElementById('sync-code-display').textContent).then(()=>alert('コピーしました！'))" style="border:none;background:var(--primary);color:white;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer">コピー</button>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div style="font-size:12px;font-weight:600;color:var(--primary)">🔑 現在の同期コード</div>
+      <button onclick="generateNewSyncCode()" style="font-size:11px;border:1px solid var(--primary);background:none;color:var(--primary);border-radius:5px;padding:2px 7px;cursor:pointer">🔄 新規生成</button>
     </div>
-    <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">このコードを他のデバイスで入力するとデータが同期されます</div>
-    <div style="display:flex;gap:6px">
-      <input id="sync-code-input" type="text" placeholder="他の人のコードを入力…" maxlength="12"
-        style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;text-transform:uppercase;font-family:monospace">
-      <button onclick="changeSyncCode(document.getElementById('sync-code-input').value)"
-        style="border:1px solid var(--primary);background:white;color:var(--primary);border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;white-space:nowrap">切替</button>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+      <span id="sync-code-display" style="font-size:20px;font-weight:700;letter-spacing:3px;color:var(--text);font-family:monospace"></span>
+      <button onclick="copySyncCode()" style="border:none;background:var(--primary);color:white;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer">コピー</button>
+      <button onclick="saveCurrentCodeToMemo()" style="border:1px solid var(--primary);background:none;color:var(--primary);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer">📌 保存</button>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">このコードを他のデバイスで入力するとデータが同期されます</div>
+
+    <!-- 保存済みコード一覧 -->
+    <div id="saved-codes-section">
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:5px">📋 保存済みコード</div>
+      <div id="saved-codes-list"></div>
+    </div>
+
+    <!-- コード入力 -->
+    <div style="margin-top:10px;border-top:1px solid rgba(99,102,241,0.2);padding-top:10px">
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:5px">コードを入力して切替</div>
+      <div style="display:flex;gap:6px">
+        <input id="sync-code-input" type="text" placeholder="コードを入力…" maxlength="12"
+          style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;text-transform:uppercase;font-family:monospace;letter-spacing:2px;background:white">
+        <button onclick="changeSyncCode(document.getElementById('sync-code-input').value)"
+          style="border:1px solid var(--primary);background:var(--primary);color:white;border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;white-space:nowrap">切替</button>
+      </div>
     </div>
   </div>
   <button class="data-btn" onclick="saveOfflineCopy()" style="border-color:#6366f1;background:var(--primary-light)">
@@ -3212,7 +3227,12 @@
   function changeSyncCode(newCode) {
     const code = (newCode || '').trim().toUpperCase();
     if (!code || code.length < 4) { alert('4文字以上の同期コードを入力してください'); return; }
+    if (code === _userId) { alert('現在と同じコードです'); return; }
     if (!confirm(`同期コードを「${code}」に変更しますか？\nこのデバイスのデータは「${code}」のデータに切り替わります。`)) return;
+    _applyNewCode(code);
+  }
+
+  function _applyNewCode(code) {
     _userId = code;
     localStorage.setItem('tf_user_id', _userId);
     // ローカルタイムスタンプをリセット → Firebaseデータが「古い」と判定されないようにする
@@ -3224,8 +3244,84 @@
     localStorage.removeItem('taskflow_archive');
     localStorage.removeItem('taskflow_memos');
     _lastWriteId = null;
-    alert('同期コードを変更しました。ページをリロードします。');
     location.reload();
+  }
+
+  // 新規コードを生成して切替
+  function generateNewSyncCode() {
+    const newCode = _genSyncCode();
+    if (!confirm(`新しい同期コード「${newCode}」を生成して切り替えますか？\n現在のコード「${_userId}」のデータは引き続き残ります。`)) return;
+    _applyNewCode(newCode);
+  }
+
+  // 現在のコードをクリップボードへ
+  function copySyncCode() {
+    navigator.clipboard.writeText(_userId).then(() => showToast('📋 同期コードをコピーしました', 'success'))
+      .catch(() => alert('コード: ' + _userId));
+  }
+
+  // ===== 保存済みコード管理 =====
+  function _getSavedCodes() {
+    try { return JSON.parse(localStorage.getItem('tf_saved_codes') || '[]'); } catch { return []; }
+  }
+  function _setSavedCodes(arr) { localStorage.setItem('tf_saved_codes', JSON.stringify(arr)); }
+
+  // 現在のコードを名前付きで保存
+  function saveCurrentCodeToMemo() {
+    const name = prompt(`コード「${_userId}」に名前をつけて保存します\n（例: iPhone、自宅PC、会社）`, '');
+    if (name === null) return; // キャンセル
+    const label = name.trim() || _userId;
+    const codes = _getSavedCodes();
+    const exists = codes.find(c => c.code === _userId);
+    if (exists) {
+      exists.label = label;
+      showToast(`✏️ 「${label}」に更新しました`, 'success');
+    } else {
+      codes.push({ code: _userId, label, savedAt: Date.now() });
+      showToast(`📌 「${label}」として保存しました`, 'success');
+    }
+    _setSavedCodes(codes);
+    renderSavedCodesList();
+  }
+
+  function deleteSavedCode(code) {
+    const codes = _getSavedCodes().filter(c => c.code !== code);
+    _setSavedCodes(codes);
+    renderSavedCodesList();
+  }
+
+  function switchToSavedCode(code) {
+    if (code === _userId) { showToast('すでにこのコードで使用中です'); return; }
+    if (!confirm(`コード「${code}」に切り替えますか？`)) return;
+    _applyNewCode(code);
+  }
+
+  function renderSavedCodesList() {
+    const container = document.getElementById('saved-codes-list');
+    if (!container) return;
+    const codes = _getSavedCodes();
+    if (!codes.length) {
+      container.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:4px 0">保存されたコードはありません。📌 保存 で追加できます</div>';
+      return;
+    }
+    container.innerHTML = codes.map(c => {
+      const isCurrent = c.code === _userId;
+      return `<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid rgba(99,102,241,0.15)">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:4px">
+            ${isCurrent ? '<span style="font-size:10px;background:var(--primary);color:white;border-radius:3px;padding:1px 4px">使用中</span>' : ''}
+            <span>${escapeHtml(c.label)}</span>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);font-family:monospace;letter-spacing:1px">${c.code}</div>
+        </div>
+        <button onclick="navigator.clipboard.writeText('${c.code}').then(()=>showToast('コピーしました','success'))"
+          style="font-size:11px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer;white-space:nowrap;flex-shrink:0">コピー</button>
+        ${!isCurrent ? `<button onclick="switchToSavedCode('${c.code}')"
+          style="font-size:11px;padding:2px 6px;border:1px solid var(--primary);border-radius:4px;background:var(--primary);color:white;cursor:pointer;white-space:nowrap;flex-shrink:0">切替</button>` : ''}
+        <button onclick="deleteSavedCode('${c.code}')"
+          style="font-size:11px;padding:2px 6px;border:1px solid #fca5a5;border-radius:4px;background:#fee2e2;color:#ef4444;cursor:pointer;flex-shrink:0">×</button>
+      </div>`;
+    }).join('');
   }
 
   function setSyncStatus(status) {
@@ -3385,6 +3481,8 @@ self.addEventListener('fetch', e => {
     // 同期コードを表示
     const el = document.getElementById('sync-code-display');
     if (el) el.textContent = _userId;
+    // 保存済みコード一覧を更新
+    renderSavedCodesList();
   }
 
   function exportData() {
