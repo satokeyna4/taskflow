@@ -2404,7 +2404,8 @@
                 <button class="tt-nav-btn" style="padding:0 10px;width:auto;font-size:12px" onclick="ttGoToday()">今日</button>
                 <button class="tt-nav-btn" id="gcal-sync-btn" onclick="gcalSync()" title="Googleカレンダーと同期" style="padding:0 8px;width:auto;font-size:11px;color:#4285f4;border-color:#4285f4;display:none">🗓️ GCal</button>
                 <button class="tt-nav-btn" id="tt-select-copy-btn" onclick="toggleTTSelectMode()" title="選択してコピー" style="padding:0 8px;width:auto;font-size:11px;color:#10b981;border-color:#10b981">📋 選択</button>
-                <button class="tt-nav-btn" onclick="openBulkTTModal()" title="テキストで一括入力" style="padding:0 8px;width:auto;font-size:11px;color:var(--primary);border-color:var(--primary)">📋 貼付</button>
+                <button class="tt-nav-btn" id="tt-paste-btn" onclick="pasteTTBlocks()" title="コピーした予定をペースト（色付き）" style="padding:0 8px;width:auto;font-size:11px;color:#f59e0b;border-color:#f59e0b;display:none">📌 ペースト</button>
+                <button class="tt-nav-btn" onclick="openBulkTTModal()" title="テキストで一括入力" style="padding:0 8px;width:auto;font-size:11px;color:var(--primary);border-color:var(--primary)">📝 一括入力</button>
                 <button class="tt-nav-btn" onclick="deleteAllTTBlocks()" title="この日の予定を全削除" style="padding:0 8px;width:auto;font-size:11px;color:#ef4444;border-color:#ef4444">🗑️ 全削除</button>
                 <button class="tt-nav-btn" onclick="openTTModal()" title="予定を追加" style="background:var(--primary);color:white;border-color:var(--primary);width:28px">＋</button>
               </div>
@@ -3174,6 +3175,7 @@
       if (!p.reminders || Array.isArray(p.reminders)) p.reminders = {};
       if (!Array.isArray(p.recurringTasks)) p.recurringTasks = [];
       if (!p.recurringDone || typeof p.recurringDone !== 'object') p.recurringDone = {};
+      if (!p.recurringSkipped || typeof p.recurringSkipped !== 'object') p.recurringSkipped = {};
       if (!Array.isArray(p.repeatTemplates)) p.repeatTemplates = [];
       if (!p.repeatExceptions || typeof p.repeatExceptions !== 'object') p.repeatExceptions = {};
       state.planner = { ...state.planner, ...p };
@@ -3366,6 +3368,7 @@
       reminders: {},        // keyed by date string
       recurringTasks: [],   // 毎日のタスク定義
       recurringDone: {},    // keyed by date string: 完了したタスクIDの配列
+      recurringSkipped: {}, // keyed by 'id_dateStr': true → その日だけ非表示
       repeatTemplates: [],  // リピート予定テンプレート
       repeatExceptions: {}, // {'templateId_YYYY-MM-DD': true} この日だけキャンセル
     },
@@ -3662,6 +3665,7 @@ self.addEventListener('fetch', e => {
         }
         if (!Array.isArray(p.recurringTasks)) p.recurringTasks = [];
         if (!p.recurringDone || typeof p.recurringDone !== 'object') p.recurringDone = {};
+        if (!p.recurringSkipped || typeof p.recurringSkipped !== 'object') p.recurringSkipped = {};
         state.planner = { ...state.planner, ...p };
       } catch(e) {
         console.warn('Failed to load planner data, resetting:', e);
@@ -4788,20 +4792,37 @@ self.addEventListener('fetch', e => {
     }
   }
 
+  function getRecurringSkipped() {
+    if (!state.planner.recurringSkipped || typeof state.planner.recurringSkipped !== 'object') {
+      state.planner.recurringSkipped = {};
+    }
+    return state.planner.recurringSkipped;
+  }
+
   function renderRecurringTasks() {
     const allTasks = getRecurringTasks();
     const dateStr = state.ttDate || today();
-    const tasks = allTasks.filter(t => shouldShowRecurring(t, dateStr));
+    const skipped = getRecurringSkipped();
+    const tasks = allTasks.filter(t =>
+      shouldShowRecurring(t, dateStr) && !skipped[t.id + '_' + dateStr]
+    );
     const doneIds = getRecurringDone(dateStr);
     const section = document.getElementById('recurring-section');
     const container = document.getElementById('recurring-task-list');
     if (!section || !container) return;
-    if (!tasks.length) { section.style.display = 'none'; return; }
+
+    // スキップ済みタスク数をバッジ表示
+    const skippedCount = allTasks.filter(t =>
+      shouldShowRecurring(t, dateStr) && skipped[t.id + '_' + dateStr]
+    ).length;
+
+    if (!tasks.length && !skippedCount) { section.style.display = 'none'; return; }
     section.style.display = 'block';
-    container.innerHTML = tasks.map(t => {
+
+    let html = tasks.map(t => {
       const done = doneIds.includes(t.id);
       const badge = recurringBadge(t);
-      return `<div class="daily-todo-item">
+      return `<div class="daily-todo-item" style="gap:4px">
         <div class="daily-todo-check ${done ? 'done' : ''}" onclick="toggleRecurringDone('${dateStr}','${t.id}')">
           ${done ? '✓' : ''}
         </div>
@@ -4809,8 +4830,64 @@ self.addEventListener('fetch', e => {
           <span style="font-size:10px;color:${badge.color};background:${badge.bg};padding:1px 5px;border-radius:3px;flex-shrink:0;white-space:nowrap">${badge.label}</span>
           <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(t.text)}</span>
         </span>
+        <button class="daily-todo-del" title="この日だけ非表示"
+          onclick="skipRecurringForDay('${t.id}','${dateStr}')"
+          style="opacity:1;font-size:11px;width:auto;padding:0 5px;border-radius:4px;border:1px solid var(--border);background:none;cursor:pointer;color:var(--text-muted)">この日✕</button>
       </div>`;
     }).join('');
+
+    // スキップ済みがあれば折りたたみで表示
+    if (skippedCount) {
+      html += `<div style="margin-top:4px">
+        <button onclick="toggleSkippedView('${dateStr}')" id="skipped-toggle-btn-${dateStr}"
+          style="font-size:11px;color:var(--text-muted);background:none;border:none;cursor:pointer;padding:2px 0">
+          ▶ この日スキップ済み（${skippedCount}件）
+        </button>
+        <div id="skipped-list-${dateStr}" style="display:none;margin-top:4px">
+          ${allTasks.filter(t => shouldShowRecurring(t, dateStr) && skipped[t.id + '_' + dateStr]).map(t => {
+            const badge = recurringBadge(t);
+            return `<div class="daily-todo-item" style="gap:4px;opacity:0.5">
+              <span style="font-size:13px;color:var(--text-muted);width:18px;text-align:center">✕</span>
+              <span style="display:flex;align-items:center;gap:4px;flex:1;min-width:0;font-size:13px;text-decoration:line-through;color:var(--text-muted)">
+                <span style="font-size:10px;color:${badge.color};background:${badge.bg};padding:1px 5px;border-radius:3px;flex-shrink:0;white-space:nowrap;text-decoration:none">${badge.label}</span>
+                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(t.text)}</span>
+              </span>
+              <button onclick="unskipRecurringForDay('${t.id}','${dateStr}')"
+                style="font-size:11px;color:var(--primary);background:none;border:1px solid var(--primary);border-radius:4px;padding:0 5px;cursor:pointer;white-space:nowrap">戻す</button>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+    }
+
+    container.innerHTML = html;
+  }
+
+  function toggleSkippedView(dateStr) {
+    const list = document.getElementById(`skipped-list-${dateStr}`);
+    const btn = document.getElementById(`skipped-toggle-btn-${dateStr}`);
+    if (!list) return;
+    const isOpen = list.style.display !== 'none';
+    list.style.display = isOpen ? 'none' : 'block';
+    if (btn) btn.textContent = btn.textContent.replace(isOpen ? '▼' : '▶', isOpen ? '▶' : '▼');
+  }
+
+  // この日だけ非表示（スキップ）
+  function skipRecurringForDay(id, dateStr) {
+    const skipped = getRecurringSkipped();
+    skipped[id + '_' + dateStr] = true;
+    save();
+    renderRecurringTasks();
+    showToast('この日の表示をスキップしました');
+  }
+
+  // スキップを解除して再表示
+  function unskipRecurringForDay(id, dateStr) {
+    const skipped = getRecurringSkipped();
+    delete skipped[id + '_' + dateStr];
+    save();
+    renderRecurringTasks();
+    showToast('繰り返しタスクを再表示しました', 'success');
   }
 
   function toggleRecurringDone(dateStr, id) {
@@ -5127,44 +5204,88 @@ self.addEventListener('fetch', e => {
   // タイムテーブル選択コピー用
   let _ttSelectMode = false;
   let _ttSelected = new Set(); // 選択中のブロックID集合
+  let _ttClipboard = []; // 色込みの完全データを保持するアプリ内クリップボード
+
+  function _getTTAllBlocks(dateStr) {
+    return [
+      ...((state.planner.schedule || {})[dateStr] || []),
+      ...(state.planner.repeatTemplates || []).filter(t => {
+        const repeatExceptions = state.planner.repeatExceptions || {};
+        if (repeatExceptions[t.id + '_' + dateStr]) return false;
+        if (t.startDate && t.startDate > dateStr) return false;
+        const dow = new Date(dateStr + 'T00:00:00').getDay();
+        if (t.repeat === 'daily') return true;
+        if (t.repeat === 'weekly') return t.dayOfWeek === dow;
+        return false;
+      }).map(t => ({ ...t, isRepeat: true }))
+    ];
+  }
 
   function toggleTTSelectMode() {
     if (_ttSelectMode && _ttSelected.size > 0) {
-      // 選択アイテムをテキストにしてクリップボードへ
       const dateStr = state.ttDate;
-      const allBlocks = [
-        ...((state.planner.schedule || {})[dateStr] || []),
-        ...(state.planner.repeatTemplates || []).filter(t => {
-          const repeatExceptions = state.planner.repeatExceptions || {};
-          if (repeatExceptions[t.id + '_' + dateStr]) return false;
-          if (t.startDate && t.startDate > dateStr) return false;
-          const dow = new Date(dateStr + 'T00:00:00').getDay();
-          if (t.repeat === 'daily') return true;
-          if (t.repeat === 'weekly') return t.dayOfWeek === dow;
-          return false;
-        }).map(t => ({ ...t, isRepeat: true }))
-      ];
-      const lines = [];
+      const allBlocks = _getTTAllBlocks(dateStr);
+
+      // 選択ブロックを時刻順で収集（フルデータ）
+      const selected = [];
       [..._ttSelected].forEach(id => {
         const b = allBlocks.find(x => x.id === id);
-        if (b) lines.push(`${b.start}〜${b.end} ${b.title}${b.note ? ' (' + b.note + ')' : ''}`);
+        if (b) selected.push(b);
       });
-      // 時刻順でソート
-      lines.sort();
-      navigator.clipboard.writeText(lines.join('\n')).then(() => {
-        showToast(`📋 ${lines.length}件の予定をコピーしました`, 'success');
-      }).catch(() => {
-        showToast('⚠️ クリップボードへのアクセスが拒否されました', 'error');
-      });
+      selected.sort((a, b) => a.start.localeCompare(b.start));
+
+      // アプリ内クリップボードに色込みで保存
+      _ttClipboard = selected.map(b => ({
+        title: b.title,
+        start: b.start,
+        end: b.end,
+        color: b.color,
+        note: b.note || ''
+      }));
+
+      // システムクリップボードにはテキスト形式でも書く（他アプリとの互換性）
+      const lines = _ttClipboard.map(b => `${b.start}〜${b.end} ${b.title}${b.note ? ' (' + b.note + ')' : ''}`);
+      navigator.clipboard.writeText(lines.join('\n')).catch(() => {});
+
+      // ペーストボタンを表示
+      const pasteBtn = document.getElementById('tt-paste-btn');
+      if (pasteBtn) {
+        pasteBtn.style.display = '';
+        pasteBtn.title = `📌 ${_ttClipboard.length}件をペースト（色付き）`;
+        pasteBtn.textContent = `📌 ペースト(${_ttClipboard.length})`;
+      }
+
+      showToast(`📋 ${_ttClipboard.length}件をコピーしました（別の日にペーストできます）`, 'success');
       _ttSelectMode = false; _ttSelected.clear();
     } else if (_ttSelectMode) {
-      // 何も選択せずキャンセル
       _ttSelectMode = false; _ttSelected.clear();
     } else {
-      // 選択モード開始
       _ttSelectMode = true; _ttSelected.clear();
     }
     renderTimetable();
+  }
+
+  function pasteTTBlocks() {
+    if (!_ttClipboard.length) { showToast('⚠️ コピーされた予定がありません', 'error'); return; }
+    const dateStr = state.ttDate;
+    if (!state.planner.schedule) state.planner.schedule = {};
+    if (!state.planner.schedule[dateStr]) state.planner.schedule[dateStr] = [];
+
+    // 色込みで追加（新しいIDを付与）
+    _ttClipboard.forEach(b => {
+      state.planner.schedule[dateStr].push({
+        id: genId(),
+        title: b.title,
+        start: b.start,
+        end: b.end,
+        color: b.color,
+        note: b.note
+      });
+    });
+
+    save();
+    renderTimetable();
+    showToast(`📌 ${_ttClipboard.length}件の予定をペーストしました`, 'success');
   }
 
   function toggleTTSelect(id, start, end, title) {
