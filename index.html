@@ -3676,6 +3676,17 @@ self.addEventListener('fetch', e => {
         console.warn('Failed to load planner data, resetting:', e);
       }
     }
+    // 旧形式(dayOfWeek単一値)をdays配列に自動マイグレーション
+    if (Array.isArray(state.planner.repeatTemplates)) {
+      let migrated = false;
+      state.planner.repeatTemplates.forEach(t => {
+        if (t.repeat === 'weekly' && !Array.isArray(t.days)) {
+          t.days = t.dayOfWeek != null ? [t.dayOfWeek] : [];
+          migrated = true;
+        }
+      });
+      if (migrated) save();
+    }
     // 未完了TODOを今日に繰り越し
     rolloverUndoneTodos();
   }
@@ -5619,48 +5630,46 @@ self.addEventListener('fetch', e => {
     openTTModal(`${String(Math.min(h,23)).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
   }
 
-  // 毎週ラジオ選択時に曜日ピッカーを表示
+  // 毎週曜日選択をJS変数で管理（DOM属性セレクタに頼らない）
+  let _ttDowSelected = new Set();
+
   function updateTTRepeatForm() {
     const val = document.querySelector('input[name="tt-repeat"]:checked')?.value || 'none';
     const picker = document.getElementById('tt-dow-picker');
     if (picker) picker.style.display = val === 'weekly' ? 'block' : 'none';
   }
 
-  // 曜日ボタンを動的生成してコンテナに挿入
   function _buildTTDowButtons(selectedDays = []) {
+    _ttDowSelected = new Set(selectedDays);
+    _renderTTDowButtons();
+  }
+
+  function _renderTTDowButtons() {
     const wrap = document.getElementById('tt-dow-buttons');
     if (!wrap) return;
-    const dayNames = ['日','月','火','水','木','金','土'];
-    const offColors = ['#ef4444','var(--text)','var(--text)','var(--text)','var(--text)','var(--text)','#3b82f6'];
-    const onColors  = ['#ef4444','var(--primary)','var(--primary)','var(--primary)','var(--primary)','var(--primary)','#3b82f6'];
+    const dayNames  = ['日','月','火','水','木','金','土'];
+    const offColors = ['#ef4444','#374151','#374151','#374151','#374151','#374151','#3b82f6'];
+    const onColors  = ['#ef4444','#6366f1','#6366f1','#6366f1','#6366f1','#6366f1','#3b82f6'];
     wrap.innerHTML = dayNames.map((d, i) => {
-      const on = selectedDays.includes(i);
-      return `<span class="tt-dow-btn" data-dow="${i}" data-on="${on?'1':'0'}"
-        data-offcolor="${offColors[i]}" data-oncolor="${onColors[i]}"
-        onclick="toggleTTDowBtn(this)"
+      const on = _ttDowSelected.has(i);
+      return `<span onclick="toggleTTDow(${i})"
         style="display:inline-block;width:34px;height:34px;line-height:34px;text-align:center;
-               font-size:13px;font-weight:600;border-radius:50%;border:1px solid ${on?onColors[i]:'var(--border)'};
+               font-size:13px;font-weight:600;border-radius:50%;
+               border:2px solid ${on ? onColors[i] : '#e2e8f0'};
                cursor:pointer;user-select:none;
-               background:${on?onColors[i]:'transparent'};
-               color:${on?'white':offColors[i]}">${d}</span>`;
+               background:${on ? onColors[i] : 'transparent'};
+               color:${on ? 'white' : offColors[i]}">${d}</span>`;
     }).join('');
   }
 
-  function toggleTTDowBtn(el) {
-    const isOn = el.dataset.on === '1';
-    const offColor = el.dataset.offcolor || 'var(--text)';
-    const onColor  = el.dataset.oncolor  || 'var(--primary)';
-    if (isOn) {
-      el.style.background = 'transparent'; el.style.color = offColor; el.style.borderColor = 'var(--border)'; el.dataset.on = '0';
-    } else {
-      el.style.background = onColor; el.style.color = 'white'; el.style.borderColor = onColor; el.dataset.on = '1';
-    }
+  function toggleTTDow(dow) {
+    if (_ttDowSelected.has(dow)) _ttDowSelected.delete(dow);
+    else _ttDowSelected.add(dow);
+    _renderTTDowButtons();
   }
 
   function _getTTDowSelected() {
-    const days = [];
-    document.querySelectorAll('.tt-dow-btn[data-on="1"]').forEach(btn => days.push(parseInt(btn.dataset.dow)));
-    return days;
+    return Array.from(_ttDowSelected);
   }
 
   function openTTModal(defaultTime = null, editId = null) {
