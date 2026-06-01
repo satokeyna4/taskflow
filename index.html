@@ -5794,10 +5794,28 @@ self.addEventListener('fetch', e => {
         // 通常ブロックの更新
         const idx = state.planner.schedule[dateStr].findIndex(b => b.id === editId);
         if (idx !== -1) {
-          const updated = { ...state.planner.schedule[dateStr][idx], title, start, end, note, color: state.selectedTTColor };
-          state.planner.schedule[dateStr][idx] = updated;
-          if (gcalIsAuthenticated()) gcalUpdateEvent(dateStr, updated);
-          showToast('✏️ 予定を更新しました');
+          if (repeatVal !== 'none') {
+            // リピートに変換：元の通常ブロックを削除してテンプレートを新規作成
+            const old = state.planner.schedule[dateStr][idx];
+            if (old.gcalId && gcalIsAuthenticated()) gcalDeleteEvent(old.gcalId);
+            state.planner.schedule[dateStr].splice(idx, 1);
+            const template = { id: genId(), title, start, end, note, color: state.selectedTTColor, repeat: repeatVal, startDate: dateStr };
+            if (repeatVal === 'weekly') {
+              template.days = selectedDays;
+              const dayNames = ['日','月','火','水','木','金','土'];
+              const label = selectedDays.sort().map(d => dayNames[d]).join('・');
+              showToast(`🔁 毎週${label}曜のリピート予定に変換しました`, 'success');
+            } else {
+              showToast('🔁 毎日のリピート予定に変換しました', 'success');
+            }
+            state.planner.repeatTemplates.push(template);
+          } else {
+            // 通常ブロックのまま更新
+            const updated = { ...state.planner.schedule[dateStr][idx], title, start, end, note, color: state.selectedTTColor };
+            state.planner.schedule[dateStr][idx] = updated;
+            if (gcalIsAuthenticated()) gcalUpdateEvent(dateStr, updated);
+            showToast('✏️ 予定を更新しました');
+          }
         }
       }
     } else {
