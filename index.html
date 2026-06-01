@@ -2561,10 +2561,15 @@
       </div>
       <div class="form-group">
         <label class="form-label">🔁 繰り返し</label>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="tt-repeat" value="none" checked> なし</label>
-          <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="tt-repeat" value="daily"> 毎日</label>
-          <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="tt-repeat" value="weekly"> 毎週</label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+          <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="tt-repeat" value="none" checked onchange="updateTTRepeatForm()"> なし</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="tt-repeat" value="daily" onchange="updateTTRepeatForm()"> 毎日</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="tt-repeat" value="weekly" onchange="updateTTRepeatForm()"> 毎週</label>
+        </div>
+        <!-- 曜日選択（毎週のとき表示） -->
+        <div id="tt-dow-picker" style="display:none">
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:5px">繰り返す曜日を選択（複数可）</div>
+          <div id="tt-dow-buttons" style="display:flex;gap:5px;flex-wrap:wrap"></div>
         </div>
       </div>
     </div>
@@ -5215,7 +5220,7 @@ self.addEventListener('fetch', e => {
         if (t.startDate && t.startDate > dateStr) return false;
         const dow = new Date(dateStr + 'T00:00:00').getDay();
         if (t.repeat === 'daily') return true;
-        if (t.repeat === 'weekly') return t.dayOfWeek === dow;
+        if (t.repeat === 'weekly') return Array.isArray(t.days) ? t.days.includes(dow) : t.dayOfWeek === dow;
         return false;
       }).map(t => ({ ...t, isRepeat: true }))
     ];
@@ -5614,12 +5619,58 @@ self.addEventListener('fetch', e => {
     openTTModal(`${String(Math.min(h,23)).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
   }
 
+  // 毎週ラジオ選択時に曜日ピッカーを表示
+  function updateTTRepeatForm() {
+    const val = document.querySelector('input[name="tt-repeat"]:checked')?.value || 'none';
+    const picker = document.getElementById('tt-dow-picker');
+    if (picker) picker.style.display = val === 'weekly' ? 'block' : 'none';
+  }
+
+  // 曜日ボタンを動的生成してコンテナに挿入
+  function _buildTTDowButtons(selectedDays = []) {
+    const wrap = document.getElementById('tt-dow-buttons');
+    if (!wrap) return;
+    const dayNames = ['日','月','火','水','木','金','土'];
+    const offColors = ['#ef4444','var(--text)','var(--text)','var(--text)','var(--text)','var(--text)','#3b82f6'];
+    const onColors  = ['#ef4444','var(--primary)','var(--primary)','var(--primary)','var(--primary)','var(--primary)','#3b82f6'];
+    wrap.innerHTML = dayNames.map((d, i) => {
+      const on = selectedDays.includes(i);
+      return `<span class="tt-dow-btn" data-dow="${i}" data-on="${on?'1':'0'}"
+        data-offcolor="${offColors[i]}" data-oncolor="${onColors[i]}"
+        onclick="toggleTTDowBtn(this)"
+        style="display:inline-block;width:34px;height:34px;line-height:34px;text-align:center;
+               font-size:13px;font-weight:600;border-radius:50%;border:1px solid ${on?onColors[i]:'var(--border)'};
+               cursor:pointer;user-select:none;
+               background:${on?onColors[i]:'transparent'};
+               color:${on?'white':offColors[i]}">${d}</span>`;
+    }).join('');
+  }
+
+  function toggleTTDowBtn(el) {
+    const isOn = el.dataset.on === '1';
+    const offColor = el.dataset.offcolor || 'var(--text)';
+    const onColor  = el.dataset.oncolor  || 'var(--primary)';
+    if (isOn) {
+      el.style.background = 'transparent'; el.style.color = offColor; el.style.borderColor = 'var(--border)'; el.dataset.on = '0';
+    } else {
+      el.style.background = onColor; el.style.color = 'white'; el.style.borderColor = onColor; el.dataset.on = '1';
+    }
+  }
+
+  function _getTTDowSelected() {
+    const days = [];
+    document.querySelectorAll('.tt-dow-btn[data-on="1"]').forEach(btn => days.push(parseInt(btn.dataset.dow)));
+    return days;
+  }
+
   function openTTModal(defaultTime = null, editId = null) {
     document.getElementById('tt-edit-id').value = editId || '';
     const delBtn = document.getElementById('tt-delete-btn');
-    // デフォルトでラジオを「なし」にリセット
+    // デフォルトでラジオを「なし」にリセット・曜日ボタン初期化
     const noneRadio = document.querySelector('input[name="tt-repeat"][value="none"]');
     if (noneRadio) noneRadio.checked = true;
+    _buildTTDowButtons([new Date(state.ttDate + 'T00:00:00').getDay()]); // 今日の曜日をデフォルト選択
+    updateTTRepeatForm();
 
     if (editId) {
       const dateStr = state.ttDate;
@@ -5638,6 +5689,10 @@ self.addEventListener('fetch', e => {
         // リピートラジオ設定
         const rRadio = document.querySelector(`input[name="tt-repeat"][value="${rt.repeat}"]`);
         if (rRadio) rRadio.checked = true;
+        // 毎週の場合は保存済み曜日を反映（days[] or 旧dayOfWeek）
+        const savedDays = Array.isArray(rt.days) ? rt.days : (rt.dayOfWeek != null ? [rt.dayOfWeek] : []);
+        _buildTTDowButtons(savedDays);
+        updateTTRepeatForm();
         delBtn.style.display = 'inline-flex';
         openModal('tt-modal');
         return;
@@ -5704,17 +5759,27 @@ self.addEventListener('fetch', e => {
     if (!Array.isArray(state.planner.repeatTemplates)) state.planner.repeatTemplates = [];
     if (!state.planner.repeatExceptions) state.planner.repeatExceptions = {};
 
+    // 毎週の場合、選択曜日を取得
+    let selectedDays = [];
+    if (repeatVal === 'weekly') {
+      selectedDays = _getTTDowSelected();
+      if (!selectedDays.length) {
+        showToast('⚠️ 曜日を1つ以上選択してください', 'error'); return;
+      }
+    }
+
     if (editId) {
       // 既存ブロックの編集
-      // repeatTemplatesの中にあるか確認
       const rtIdx = state.planner.repeatTemplates.findIndex(t => t.id === editId);
       if (rtIdx !== -1) {
         // リピートテンプレートの更新
         const existing = state.planner.repeatTemplates[rtIdx];
-        state.planner.repeatTemplates[rtIdx] = {
+        const updated = {
           ...existing, title, start, end, note, color: state.selectedTTColor,
           repeat: repeatVal === 'none' ? 'daily' : repeatVal
         };
+        if (repeatVal === 'weekly') { updated.days = selectedDays; delete updated.dayOfWeek; }
+        state.planner.repeatTemplates[rtIdx] = updated;
         showToast('✏️ リピート予定を更新しました');
       } else {
         // 通常ブロックの更新
@@ -5729,16 +5794,21 @@ self.addEventListener('fetch', e => {
     } else {
       if (repeatVal !== 'none') {
         // リピートテンプレートとして保存
-        const dow = new Date(dateStr + 'T00:00:00').getDay();
         const template = {
           id: genId(), title, start, end, note,
           color: state.selectedTTColor,
           repeat: repeatVal,
           startDate: dateStr,
-          dayOfWeek: dow  // weekly の場合に使用
         };
+        if (repeatVal === 'weekly') {
+          template.days = selectedDays; // 複数曜日を配列で保存
+          const dayNames = ['日','月','火','水','木','金','土'];
+          const label = selectedDays.sort().map(d => dayNames[d]).join('・');
+          showToast(`🔁 毎週${label}曜のリピート予定を追加しました`, 'success');
+        } else {
+          showToast(`🔁 毎日のリピート予定を追加しました`, 'success');
+        }
         state.planner.repeatTemplates.push(template);
-        showToast(`🔁 ${repeatVal === 'weekly' ? '毎週' : '毎日'}のリピート予定を追加しました`, 'success');
       } else {
         // 通常の1回予定として保存
         const newBlock = { id: genId(), title, start, end, note, color: state.selectedTTColor };
