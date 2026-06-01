@@ -5493,7 +5493,7 @@ self.addEventListener('fetch', e => {
       if (repeatExceptions[t.id + '_' + dateStr]) return false; // この日はキャンセル
       if (t.startDate && t.startDate > dateStr) return false;   // まだ開始していない
       if (t.repeat === 'daily') return true;
-      if (t.repeat === 'weekly') return t.dayOfWeek === dow;
+      if (t.repeat === 'weekly') return Array.isArray(t.days) ? t.days.includes(dow) : t.dayOfWeek === dow;
       return false;
     }).map(t => ({ ...t, isRepeat: true }));
 
@@ -6790,7 +6790,7 @@ self.addEventListener('fetch', e => {
       if (repeatExceptions[t.id + '_' + dateStr]) return false;
       if (t.startDate && t.startDate > dateStr) return false;
       if (t.repeat === 'daily') return true;
-      if (t.repeat === 'weekly') return t.dayOfWeek === dow;
+      if (t.repeat === 'weekly') return Array.isArray(t.days) ? t.days.includes(dow) : t.dayOfWeek === dow;
       if (t.repeat === 'monthly') {
         return Array.isArray(t.daysOfMonth) && t.daysOfMonth.includes(date.getDate());
       }
