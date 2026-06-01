@@ -6712,19 +6712,40 @@ self.addEventListener('fetch', e => {
     cell.className = 'cal-cell' + (otherMonth ? ' other-month' : '') + (isToday ? ' today' : '');
 
     const tasks = state.tasks.filter(t => t.due === dateStr);
-    // 手帳の予定も取得
-    const scheduleBlocks = ((state.planner.schedule || {})[dateStr] || [])
-      .slice().sort((a, b) => a.start.localeCompare(b.start));
+    // 手帳の予定も取得（通常予定 + 繰り返し予定）
+    const repeatTemplates = state.planner.repeatTemplates || [];
+    const repeatExceptions = state.planner.repeatExceptions || {};
+    const dow = date.getDay();
+    const repeatBlocks = repeatTemplates.filter(t => {
+      if (repeatExceptions[t.id + '_' + dateStr]) return false;
+      if (t.startDate && t.startDate > dateStr) return false;
+      if (t.repeat === 'daily') return true;
+      if (t.repeat === 'weekly') return t.dayOfWeek === dow;
+      if (t.repeat === 'monthly') {
+        return Array.isArray(t.daysOfMonth) && t.daysOfMonth.includes(date.getDate());
+      }
+      if (t.repeat === 'interval') {
+        const base = t.startDate || dateStr;
+        const diff = Math.round((new Date(dateStr + 'T00:00:00') - new Date(base + 'T00:00:00')) / 86400000);
+        return diff >= 0 && diff % Math.max(1, t.interval || 2) === 0;
+      }
+      return false;
+    });
+    const scheduleBlocks = [
+      ...((state.planner.schedule || {})[dateStr] || []),
+      ...repeatBlocks
+    ].sort((a, b) => a.start.localeCompare(b.start));
 
     let html = `<div class="cal-date-num">${date.getDate()}</div>`;
 
     // 手帳の予定（先に表示・時刻付き）
     const MAX_SCH = 2;
     scheduleBlocks.slice(0, MAX_SCH).forEach(b => {
+      const repeatMark = b.repeat ? '🔁 ' : '⏰ ';
       html += `<button class="cal-task-chip"
         style="background:${b.color};color:#fff;opacity:0.92"
         onclick="jumpToPlannerDate('${dateStr}')"
-        title="${b.start} ${escapeHtml(b.title)}">⏰ ${b.start} ${escapeHtml(b.title)}</button>`;
+        title="${b.start} ${escapeHtml(b.title)}">${repeatMark}${b.start} ${escapeHtml(b.title)}</button>`;
     });
 
     // タスクの締め切り
