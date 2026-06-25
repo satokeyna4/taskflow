@@ -980,6 +980,33 @@
     }
     .cal-cell:hover .cal-planner-btn { display: flex; }
 
+    .cal-cell.period-day { background: #fff0f6; }
+    .cal-cell.period-day:hover { background: #fce4ef; }
+    .cal-period-indicator {
+      display: inline-block;
+      font-size: 10px;
+      color: #be185d;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+    .cal-period-btn {
+      position: absolute;
+      bottom: 28px; right: 4px;
+      height: 20px;
+      padding: 0 5px;
+      border-radius: 10px;
+      background: #f9a8d4;
+      color: #9d174d;
+      border: none;
+      font-size: 10px;
+      font-weight: 700;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      white-space: nowrap;
+    }
+    .cal-cell:hover .cal-period-btn { display: flex; }
+
     /* ===== LIST MANAGEMENT ===== */
     .lists-view-wrapper {
       display: flex;
@@ -2470,6 +2497,7 @@
           <div class="cal-month-title" id="cal-month-title"></div>
           <div style="display:flex;gap:8px;align-items:center">
             <button class="cal-today-btn" onclick="calGoToday()">今日</button>
+            <button class="cal-today-btn" onclick="openPeriodModal()" style="background:#fce7f3;color:#9d174d;border-color:#f9a8d4">🩸 生理記録</button>
             <div class="cal-nav-btns">
               <button class="cal-nav-btn" onclick="calMove(-1)">‹</button>
               <button class="cal-nav-btn" onclick="calMove(1)">›</button>
@@ -2712,6 +2740,36 @@
     <div class="modal-footer" style="justify-content:space-between">
       <button class="btn" onclick="copyRecurringTasks()" style="color:var(--primary);border:1px solid var(--primary);background:none">📋 コピー</button>
       <button class="btn btn-secondary" onclick="closeModal('recurring-modal')">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- PERIOD MODAL -->
+<div class="modal-overlay" id="period-modal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header" style="background:#fce7f3">
+      <h2 class="modal-title">🩸 生理記録</h2>
+      <button class="modal-close" onclick="closeModal('period-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;gap:12px;margin-bottom:12px">
+        <div style="flex:1">
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">開始日</label>
+          <input type="date" id="period-start-input" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;box-sizing:border-box">
+        </div>
+        <div style="flex:1">
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">終了日</label>
+          <input type="date" id="period-end-input" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:14px;box-sizing:border-box">
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="addPeriod()" style="width:100%;background:#db2777;border-color:#db2777">追加</button>
+      <div style="margin-top:16px">
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;font-weight:600">記録一覧</div>
+        <div id="period-list" style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('period-modal')">閉じる</button>
     </div>
   </div>
 </div>
@@ -3393,6 +3451,7 @@
       repeatExceptions: {}, // {'templateId_YYYY-MM-DD': true} この日だけキャンセル
     },
     memos: [],            // 付箋メモ [{id, title, content, color, createdAt, updatedAt}]
+    periods: [],          // 生理記録 [{id, start:'YYYY-MM-DD', end:'YYYY-MM-DD'}]
     reminderPanelOpen: false,
     currentGoalTab: 'monthly',
     ttDate: (d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`)(new Date()),
@@ -3631,6 +3690,7 @@ self.addEventListener('fetch', e => {
     localStorage.setItem('taskflow_planner', JSON.stringify(state.planner));
     localStorage.setItem('taskflow_archive', JSON.stringify(state.archive));
     localStorage.setItem('taskflow_memos', JSON.stringify(state.memos));
+    localStorage.setItem('taskflow_periods', JSON.stringify(state.periods));
     localStorage.setItem('taskflow_local_ts', String(now)); // ローカル更新タイムスタンプ
     // Firebase REST API で同期
     const writeId = _deviceId + '_' + now;
@@ -3666,6 +3726,8 @@ self.addEventListener('fetch', e => {
     if (lists) state.lists = JSON.parse(lists);
     if (archive) state.archive = JSON.parse(archive);
     if (memos) state.memos = JSON.parse(memos);
+    const periods = localStorage.getItem('taskflow_periods');
+    if (periods) { try { state.periods = JSON.parse(periods); } catch(e) {} }
     if (planner) {
       try {
         const p = JSON.parse(planner);
@@ -6848,8 +6910,9 @@ self.addEventListener('fetch', e => {
     const dateStr = localDateStr(date);
     const isToday = dateStr === todayStr;
     const holidayName = JP_HOLIDAYS[dateStr] || null;
+    const isPeriod = (state.periods || []).some(p => p.start <= dateStr && dateStr <= p.end);
     const cell = document.createElement('div');
-    cell.className = 'cal-cell' + (otherMonth ? ' other-month' : '') + (isToday ? ' today' : '') + (holidayName ? ' holiday' : '');
+    cell.className = 'cal-cell' + (otherMonth ? ' other-month' : '') + (isToday ? ' today' : '') + (holidayName ? ' holiday' : '') + (isPeriod ? ' period-day' : '');
 
     const tasks = state.tasks.filter(t => t.due === dateStr);
     // 手帳の予定も取得（通常予定 + 繰り返し予定）
@@ -6878,6 +6941,7 @@ self.addEventListener('fetch', e => {
 
     let html = `<div class="cal-date-num">${date.getDate()}</div>`;
     if (holidayName) html += `<div class="cal-holiday-name">${holidayName}</div>`;
+    if (isPeriod) html += `<span class="cal-period-indicator">🩸</span>`;
 
     // 手帳の予定（先に表示・時刻付き）
     const MAX_SCH = 2;
@@ -6907,9 +6971,64 @@ self.addEventListener('fetch', e => {
 
     html += `<button class="cal-add-btn" onclick="openAddTaskOnDate('${dateStr}')" title="タスクを追加">+</button>`;
     html += `<button class="cal-planner-btn" onclick="event.stopPropagation();jumpToPlannerDate('${dateStr}')" title="手帳で開く">📓 手帳</button>`;
+    html += `<button class="cal-period-btn" onclick="event.stopPropagation();openPeriodModalOnDate('${dateStr}')" title="生理記録">🩸</button>`;
 
     cell.innerHTML = html;
     return cell;
+  }
+
+  // ===== PERIOD TRACKING =====
+  function openPeriodModal() {
+    renderPeriodList();
+    document.getElementById('period-start-input').value = today();
+    document.getElementById('period-end-input').value = today();
+    openModal('period-modal');
+  }
+
+  function openPeriodModalOnDate(dateStr) {
+    renderPeriodList();
+    document.getElementById('period-start-input').value = dateStr;
+    document.getElementById('period-end-input').value = dateStr;
+    openModal('period-modal');
+  }
+
+  function addPeriod() {
+    const start = document.getElementById('period-start-input').value;
+    const end = document.getElementById('period-end-input').value;
+    if (!start || !end) { showToast('⚠️ 開始日と終了日を入力してください', 'error'); return; }
+    if (start > end) { showToast('⚠️ 終了日は開始日以降にしてください', 'error'); return; }
+    if (!Array.isArray(state.periods)) state.periods = [];
+    state.periods.push({ id: genId(), start, end });
+    state.periods.sort((a, b) => b.start.localeCompare(a.start));
+    save();
+    renderPeriodList();
+    renderCalendarView();
+    showToast('🩸 生理記録を追加しました');
+  }
+
+  function deletePeriod(id) {
+    state.periods = (state.periods || []).filter(p => p.id !== id);
+    save();
+    renderPeriodList();
+    renderCalendarView();
+    showToast('削除しました');
+  }
+
+  function renderPeriodList() {
+    const list = document.getElementById('period-list');
+    if (!list) return;
+    const periods = (state.periods || []).slice().sort((a, b) => b.start.localeCompare(a.start));
+    if (!periods.length) {
+      list.innerHTML = '<div style="font-size:13px;color:var(--text-muted);text-align:center;padding:12px 0">記録がありません</div>';
+      return;
+    }
+    list.innerHTML = periods.map(p => {
+      const days = Math.round((new Date(p.end+'T00:00:00') - new Date(p.start+'T00:00:00')) / 86400000) + 1;
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:#fff0f6;border-radius:8px;font-size:13px">
+        <span>🩸 ${p.start} 〜 ${p.end} <span style="color:#be185d;font-size:11px">(${days}日間)</span></span>
+        <button onclick="deletePeriod('${p.id}')" style="background:none;border:none;cursor:pointer;color:#be185d;font-size:16px;padding:0 4px" title="削除">×</button>
+      </div>`;
+    }).join('');
   }
 
   function jumpToPlannerDate(dateStr) {
