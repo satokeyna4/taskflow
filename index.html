@@ -2497,7 +2497,7 @@
           <div class="cal-month-title" id="cal-month-title"></div>
           <div style="display:flex;gap:8px;align-items:center">
             <button class="cal-today-btn" onclick="calGoToday()">今日</button>
-            <button class="cal-today-btn" onclick="openPeriodModal()" style="background:#fce7f3;color:#9d174d;border-color:#f9a8d4">🩸 生理記録</button>
+            <button class="cal-today-btn" onclick="openPeriodModal()" style="background:#fce7f3;color:#9d174d;border-color:#f9a8d4">❤️ 体調リズム</button>
             <div class="cal-nav-btns">
               <button class="cal-nav-btn" onclick="calMove(-1)">‹</button>
               <button class="cal-nav-btn" onclick="calMove(1)">›</button>
@@ -2748,7 +2748,7 @@
 <div class="modal-overlay" id="period-modal">
   <div class="modal" style="max-width:420px">
     <div class="modal-header" style="background:#fce7f3">
-      <h2 class="modal-title">🩸 生理記録</h2>
+      <h2 class="modal-title">❤️ 体調リズム</h2>
       <button class="modal-close" onclick="closeModal('period-modal')">×</button>
     </div>
     <div class="modal-body">
@@ -3451,7 +3451,7 @@
       repeatExceptions: {}, // {'templateId_YYYY-MM-DD': true} この日だけキャンセル
     },
     memos: [],            // 付箋メモ [{id, title, content, color, createdAt, updatedAt}]
-    periods: [],          // 生理記録 [{id, start:'YYYY-MM-DD', end:'YYYY-MM-DD'}]
+    periods: [],          // 体調リズム [{id, start:'YYYY-MM-DD', end:'YYYY-MM-DD'}]
     reminderPanelOpen: false,
     currentGoalTab: 'monthly',
     ttDate: (d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`)(new Date()),
@@ -6941,7 +6941,7 @@ self.addEventListener('fetch', e => {
 
     let html = `<div class="cal-date-num">${date.getDate()}</div>`;
     if (holidayName) html += `<div class="cal-holiday-name">${holidayName}</div>`;
-    if (isPeriod) html += `<span class="cal-period-indicator">🩸</span>`;
+    if (isPeriod) html += `<span class="cal-period-indicator">❤️</span>`;
 
     // 手帳の予定（先に表示・時刻付き）
     const MAX_SCH = 2;
@@ -6971,7 +6971,7 @@ self.addEventListener('fetch', e => {
 
     html += `<button class="cal-add-btn" onclick="openAddTaskOnDate('${dateStr}')" title="タスクを追加">+</button>`;
     html += `<button class="cal-planner-btn" onclick="event.stopPropagation();jumpToPlannerDate('${dateStr}')" title="手帳で開く">📓 手帳</button>`;
-    html += `<button class="cal-period-btn" onclick="event.stopPropagation();openPeriodModalOnDate('${dateStr}')" title="生理記録">🩸</button>`;
+    html += `<button class="cal-period-btn" onclick="event.stopPropagation();openPeriodModalOnDate('${dateStr}')" title="体調リズム">❤️</button>`;
 
     cell.innerHTML = html;
     return cell;
@@ -7003,7 +7003,7 @@ self.addEventListener('fetch', e => {
     save();
     renderPeriodList();
     renderCalendarView();
-    showToast('🩸 生理記録を追加しました');
+    showToast('❤️ 体調リズムを追加しました');
   }
 
   function deletePeriod(id) {
@@ -7025,7 +7025,7 @@ self.addEventListener('fetch', e => {
     list.innerHTML = periods.map(p => {
       const days = Math.round((new Date(p.end+'T00:00:00') - new Date(p.start+'T00:00:00')) / 86400000) + 1;
       return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:#fff0f6;border-radius:8px;font-size:13px">
-        <span>🩸 ${p.start} 〜 ${p.end} <span style="color:#be185d;font-size:11px">(${days}日間)</span></span>
+        <span>❤️ ${p.start} 〜 ${p.end} <span style="color:#be185d;font-size:11px">(${days}日間)</span></span>
         <button onclick="deletePeriod('${p.id}')" style="background:none;border:none;cursor:pointer;color:#be185d;font-size:16px;padding:0 4px" title="削除">×</button>
       </div>`;
     }).join('');
